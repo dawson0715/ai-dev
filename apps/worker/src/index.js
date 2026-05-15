@@ -1,6 +1,6 @@
 import path from 'path'
 import {apiClient} from './services/api.service.js'
-import {commitAll, createWorktree, ensureClone, pushBranch, removeWorktree} from './services/git.service.js'
+import {commitAll, createWorktree, ensureClone, pruneWorktrees, pushBranch, removeWorktree} from './services/git.service.js'
 import {buildPrompt, runClaude} from './services/agent.service.js'
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 30000)
@@ -11,6 +11,20 @@ const api = apiClient()
 console.log('worker started')
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+async function pruneAll() {
+    const projects = await api.listProjects()
+    for (const p of projects) {
+        try {
+            const repoPath = await ensureClone(p, WORKSPACE)
+            await pruneWorktrees(repoPath)
+        } catch (err) {
+            console.error(`prune failed for project ${p._id}:`, err.message)
+        }
+    }
+}
+
+await pruneAll()
 
 async function pollAll() {
     const projects = await api.listProjects()

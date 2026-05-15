@@ -36,14 +36,30 @@ export async function ensureClone(project, workspace) {
 
 export async function createWorktree(repoPath, worktreePath, branch, baseBranch) {
     const git = simpleGit(repoPath)
-    await git.fetch('origin', baseBranch)
+    await git.fetch('origin')
     await fs.mkdir(path.dirname(worktreePath), {recursive: true})
-    await git.raw(['worktree', 'add', '-b', branch, worktreePath, `origin/${baseBranch}`])
+
+    const remote = await git.branch(['-r', '--list', `origin/${branch}`])
+    const local = await git.branch(['--list', branch])
+
+    if (remote.all.length > 0) {
+        await git.raw(['branch', '-f', branch, `origin/${branch}`])
+        await git.raw(['worktree', 'add', worktreePath, branch])
+    } else if (local.all.length > 0) {
+        await git.raw(['worktree', 'add', worktreePath, branch])
+    } else {
+        await git.raw(['worktree', 'add', '-b', branch, worktreePath, `origin/${baseBranch}`])
+    }
 }
 
 export async function removeWorktree(repoPath, worktreePath) {
     const git = simpleGit(repoPath)
     await git.raw(['worktree', 'remove', '--force', worktreePath])
+}
+
+export async function pruneWorktrees(repoPath) {
+    const git = simpleGit(repoPath)
+    await git.raw(['worktree', 'prune'])
 }
 
 export async function commitAll(worktreePath, message) {
