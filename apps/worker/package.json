@@ -1,12 +1,12 @@
 {
   "name": "agent-worker",
   "version": "1.0.0",
-  "main": "src/index.js",
+  "main": "src/cli.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/cli.js"
   },
   "dependencies": {
-    "mongodb": "^6.0.0"
+    "simple-git": "^3.27.0"
   }
 }
