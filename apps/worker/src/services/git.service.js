@@ -3,6 +3,7 @@ import fs from 'fs/promises'
 import path from 'path'
 
 function injectPat(url, token) {
+    if (!token) return url
     const u = new URL(url)
     u.username = 'oauth2'
     u.password = token
