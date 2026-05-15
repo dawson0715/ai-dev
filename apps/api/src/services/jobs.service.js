@@ -3,7 +3,7 @@ import {projectsModel} from '../models/projects.model.js'
 import {listTodoTasks, postComment, setTaskStatus} from './clickup.service.js'
 
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN
-const CLICKUP_QUESTION_STATUS = process.env.CLICKUP_QUESTION_STATUS ?? 'onhold/question'
+const CLICKUP_QUESTION_STATUS = process.env.CLICKUP_QUESTION_STATUS ?? 'pending'
 const CLICKUP_INPROGRESS_STATUS = process.env.CLICKUP_INPROGRESS_STATUS ?? 'in progress'
 
 export function jobsService(db) {
@@ -49,7 +49,7 @@ export function jobsService(db) {
 
         update: (id, fields) => jobs.update(id, fields),
 
-        async ask(jobId, {question_text, ...fields}) {
+        async ask(jobId, {question_text, execution}) {
             const job = await jobs.findById(jobId)
             if (!job) throw notFound('job not found')
 
@@ -63,11 +63,14 @@ export function jobsService(db) {
                 }
             }
 
-            await jobs.update(jobId, {status: 'awaiting_clarification', ...fields})
+            await jobs.pushExecution(jobId, execution, {
+                status: 'awaiting_clarification',
+                completed_at: new Date()
+            })
             return {ok: true}
         },
 
-        async complete(jobId, fields) {
+        async complete(jobId, {execution, gitlab}) {
             const job = await jobs.findById(jobId)
             if (!job) throw notFound('job not found')
 
@@ -80,7 +83,21 @@ export function jobsService(db) {
                 }
             }
 
-            await jobs.update(jobId, {status: 'completed', ...fields})
+            const setFields = {status: 'completed', completed_at: new Date()}
+            if (gitlab) setFields.gitlab = gitlab
+
+            await jobs.pushExecution(jobId, execution, setFields)
+            return {ok: true}
+        },
+
+        async fail(jobId, {execution}) {
+            const job = await jobs.findById(jobId)
+            if (!job) throw notFound('job not found')
+
+            await jobs.pushExecution(jobId, execution, {
+                status: 'failed',
+                completed_at: new Date()
+            })
             return {ok: true}
         }
     }

@@ -20,7 +20,7 @@ Queste scelte sono state prese esplicitamente nella conversazione di progettazio
 
 **Mapping progetto = una lista ClickUp ↔ un repo GitLab.** Creato a runtime via `POST /projects` (URL GitLab, token GitLab, list_id ClickUp), non da file di config.
 
-**Path di lavoro per id, non per nome**: `/opt/computer/cache/<projectId>` per il clone permanente, `/opt/computer/worktrees/<jobId>` per il workspace isolato del singolo task. Evita rename/collisioni/caratteri.
+**Path di lavoro per id, non per nome**: `/opt/cache/<projectId>` per il clone permanente, `/opt/worktrees/<jobId>` per il workspace isolato del singolo task. Evita rename/collisioni/caratteri.
 
 **Workflow ClickUp comune a tutte le liste**: stati `Todo → In Progress → Review`. L'agente prende task in `Todo` e li sposta in `In Progress` quando apre la MR.
 
@@ -28,10 +28,10 @@ Queste scelte sono state prese esplicitamente nella conversazione di progettazio
 
 Due servizi Node.js (ESM, Node 22) che condividono una MongoDB e un volume scratch montato dall'host:
 
-- `apps/api` — Server HTTP Fastify (port 3000). Possiede la registrazione progetti: `POST /projects` inserisce un documento in `projects`, clona il repo GitLab in `/opt/computer/cache/<projectId>` e scrive `local_path` nel doc. `GET /health` per liveness.
+- `apps/api` — Server HTTP Fastify (port 3000). Possiede la registrazione progetti: `POST /projects` inserisce un documento in `projects`, clona il repo GitLab in `/opt/cache/<projectId>` e scrive `local_path` nel doc. `GET /health` per liveness.
 - `apps/worker` — Loop di polling long-running. Claim atomico di un job `pending` via `findOneAndUpdate` (transizione `pending → running → completed`). Sleep 5s tra poll vuoti. Il corpo dell'esecuzione del job è ancora uno stub.
 - `mongo` — Singola istanza MongoDB. Il nome del DB viene dalla connection string (`MONGO_URL=mongodb://mongo:27017/agent`).
-- `opt/computer/` — Area di lavoro bind-mounted in entrambi i container su `/opt/computer`:
+- `opt/` — Area di lavoro bind-mounted in entrambi i container su `/opt`:
   - `cache/<projectId>/` — clone completo, creato dall'API alla registrazione.
   - `worktrees/<jobId>/` — git worktree per task (non ancora cablato).
 
@@ -58,6 +58,6 @@ Nessun test/lint/build configurato. L'unico npm script per app è `start`.
 ## Convenzioni
 
 - ESM ovunque (`"type": "module"`). Top-level `await` usato nei due entry point (es. `mongo.connect()` al load del modulo) — tienine conto quando rifattorizzi lo startup.
-- I path nei container sono assoluti (`/opt/computer/...`) e assumono il bind mount di `docker-compose.yml`. Se giri fuori da Docker, punta a un path esistente sull'host o adatta il codice.
+- I path nei container sono assoluti (`/opt/...`) e assumono il bind mount di `docker-compose.yml`. Se giri fuori da Docker, punta a un path esistente sull'host o adatta il codice.
 - I token GitLab sono in chiaro nel documento `projects` (scope MVP) — segnalalo se introduci code path che li espongono.
 - Bug noto in `apps/worker/src/index.js`: con `mongodb` v6 `findOneAndUpdate` restituisce direttamente il documento (no wrapper `.value`) salvo `includeResultMetadata: true`. Il codice attuale fa `job?.value._id`, quindi tratterà ogni risultato come "nessun job". Da sistemare quando il worker viene reso funzionante.

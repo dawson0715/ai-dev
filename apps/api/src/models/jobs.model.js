@@ -40,6 +40,16 @@ export function jobsModel(db) {
 
         update(id, fields) {
             return collection.updateOne({_id: id}, {$set: fields})
+        },
+
+        pushExecution(id, execution, setFields) {
+            return collection.updateOne(
+                {_id: id},
+                {
+                    $push: {executions: execution},
+                    $set: setFields
+                }
+            )
         }
     }
 }

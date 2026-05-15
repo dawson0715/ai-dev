@@ -24,4 +24,5 @@ export async function registerRoutes(app, db) {
     app.patch('/jobs/:id', jobsCtl.update)
     app.post('/jobs/:id/ask', jobsCtl.ask)
     app.post('/jobs/:id/complete', jobsCtl.complete)
+    app.post('/jobs/:id/fail', jobsCtl.fail)
 }

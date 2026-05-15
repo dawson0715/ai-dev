@@ -33,6 +33,16 @@ export function jobsController({jobsService}) {
                 if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
                 throw err
             }
+        },
+
+        async fail(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.fail(id, req.body ?? {})
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
         }
     }
 }

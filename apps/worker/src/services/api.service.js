@@ -26,6 +26,7 @@ export function apiClient() {
         claimJob: () => request('POST', '/jobs/claim'),
         updateJob: (jobId, fields) => request('PATCH', `/jobs/${jobId}`, fields),
         askQuestion: (jobId, payload) => request('POST', `/jobs/${jobId}/ask`, payload),
-        completeJob: (jobId, payload) => request('POST', `/jobs/${jobId}/complete`, payload)
+        completeJob: (jobId, payload) => request('POST', `/jobs/${jobId}/complete`, payload),
+        failJob: (jobId, payload) => request('POST', `/jobs/${jobId}/fail`, payload)
     }
 }

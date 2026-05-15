@@ -1,6 +1,6 @@
 import path from 'path'
 import {apiClient} from './services/api.service.js'
-import {commitAll, createWorktree, ensureClone, removeWorktree} from './services/git.service.js'
+import {commitAll, createWorktree, ensureClone, pushBranch, removeWorktree} from './services/git.service.js'
 import {buildPrompt, runClaude} from './services/agent.service.js'
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 30000)
@@ -35,11 +35,17 @@ async function processNextJob() {
 
     console.log('processing job', job._id, job.clickup?.task_id)
 
+    const startedAt = new Date()
+
     if (!project) {
-        await api.updateJob(job._id, {
-            status: 'failed',
-            completed_at: new Date(),
-            'execution.error': 'project not found'
+        await api.failJob(job._id, {
+            execution: {
+                outcome: 'failed',
+                started_at: startedAt,
+                completed_at: new Date(),
+                duration_ms: 0,
+                error: 'project not found'
+            }
         })
         return true
     }
@@ -49,55 +55,76 @@ async function processNextJob() {
     const taskId = job.clickup?.task_id ?? job._id
     const branch = `feature/${taskId}`
     const baseBranch = project.gitlab?.default_branch ?? 'main'
-    const worktreePath = path.join(WORKSPACE, 'opt/computer/worktrees', job._id)
+    const worktreePath = path.join(WORKSPACE, 'opt/worktrees', job._id)
     const prompt = buildPrompt(job)
-    const startedAt = new Date()
+
+    let stdout = ''
+    let stderr = ''
 
     try {
         await createWorktree(repoPath, worktreePath, branch, baseBranch)
 
-        const {stdout, stderr} = await runClaude({cwd: worktreePath, prompt})
+        const claudeResult = await runClaude({cwd: worktreePath, prompt})
+        stdout = claudeResult.stdout
+        stderr = claudeResult.stderr
 
         const commitMessage = job.clickup?.title ?? `task ${taskId}`
         const commitSha = await commitAll(worktreePath, commitMessage)
-        const completedAt = new Date()
 
         if (commitSha === null) {
             const questionText = stdout.trim() || '(Claude non ha modificato file e non ha lasciato output)'
+            const completedAt = new Date()
 
             await api.askQuestion(job._id, {
                 question_text: questionText,
-                completed_at: completedAt,
-                'execution.started_at': startedAt,
-                'execution.duration_ms': completedAt - startedAt,
-                'execution.worktree_path': worktreePath,
-                'agent.prompt': prompt,
-                'agent.response': stdout,
-                'agent.stderr': stderr,
-                'agent.question': questionText
+                execution: {
+                    outcome: 'question',
+                    prompt,
+                    response: stdout,
+                    stderr,
+                    started_at: startedAt,
+                    completed_at: completedAt,
+                    duration_ms: completedAt - startedAt,
+                    worktree_path: worktreePath,
+                    question_text: questionText
+                }
             })
         } else {
+            await pushBranch(worktreePath, branch)
+            const completedAt = new Date()
+
             await api.completeJob(job._id, {
-                completed_at: completedAt,
-                'execution.started_at': startedAt,
-                'execution.duration_ms': completedAt - startedAt,
-                'execution.worktree_path': worktreePath,
-                'agent.prompt': prompt,
-                'agent.response': stdout,
-                'agent.stderr': stderr,
-                'gitlab.branch': branch,
-                'gitlab.commit_sha': commitSha
+                execution: {
+                    outcome: 'implementation',
+                    prompt,
+                    response: stdout,
+                    stderr,
+                    started_at: startedAt,
+                    completed_at: completedAt,
+                    duration_ms: completedAt - startedAt,
+                    worktree_path: worktreePath,
+                    branch,
+                    commit_sha: commitSha,
+                    pushed: true
+                },
+                gitlab: {branch, commit_sha: commitSha, pushed: true}
             })
-            // TODO Fase 3: push branch + apertura MR su GitLab
         }
     } catch (err) {
         console.error(`job ${job._id} failed:`, err.message)
-        await api.updateJob(job._id, {
-            status: 'failed',
-            completed_at: new Date(),
-            'execution.started_at': startedAt,
-            'execution.worktree_path': worktreePath,
-            'execution.error': err.message
+        const completedAt = new Date()
+        await api.failJob(job._id, {
+            execution: {
+                outcome: 'failed',
+                prompt,
+                response: stdout,
+                stderr,
+                started_at: startedAt,
+                completed_at: completedAt,
+                duration_ms: completedAt - startedAt,
+                worktree_path: worktreePath,
+                error: err.message
+            }
         })
     } finally {
         try {

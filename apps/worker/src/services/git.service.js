@@ -20,7 +20,7 @@ async function isGitRepo(p) {
 }
 
 export async function ensureClone(project, workspace) {
-    const repoPath = path.join(workspace, 'opt/computer/cache', project._id.toString())
+    const repoPath = path.join(workspace, 'opt/cache', project._id.toString())
 
     if (await isGitRepo(repoPath)) {
         return repoPath
@@ -54,4 +54,9 @@ export async function commitAll(worktreePath, message) {
     await git.commit(message)
     const sha = await git.revparse(['HEAD'])
     return sha.trim()
+}
+
+export async function pushBranch(worktreePath, branch) {
+    const git = simpleGit(worktreePath)
+    await git.push('origin', branch, ['-u'])
 }
