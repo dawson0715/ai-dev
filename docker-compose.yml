@@ -1,0 +1,36 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/agent
+    volumes:
+      - ./opt/computer:/opt/computer
+    depends_on:
+      - mongo
+
+  worker:
+    build: ./apps/worker
+    restart: unless-stopped
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/agent
+      - CLICKUP_TOKEN=${CLICKUP_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-30000}
+    volumes:
+      - ./opt/computer:/opt/computer
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:

@@ -1,0 +1,14 @@
+{
+  "name": "agent-api",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "fastify": "^5.0.0",
+    "mongodb": "^6.0.0",
+    "simple-git": "^3.27.0"
+  }
+}
