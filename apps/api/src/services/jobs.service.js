@@ -19,6 +19,19 @@ export function jobsService(db) {
     return {
         init: () => jobs.init(),
 
+        findAll: (opts) => jobs.findAll(opts),
+
+        findByProject: (projectId) => jobs.findByProject(projectId),
+
+        findById: (id) => jobs.findById(id),
+
+        async retry(jobId) {
+            const job = await jobs.findById(jobId)
+            if (!job) throw notFound('job not found')
+            await jobs.update(jobId, {status: 'pending', started_at: null})
+            return {ok: true}
+        },
+
         async syncProject(projectId) {
             if (!CLICKUP_TOKEN) return {created: 0, warning: 'CLICKUP_TOKEN not set'}
 

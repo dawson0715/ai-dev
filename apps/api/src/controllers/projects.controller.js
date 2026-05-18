@@ -11,6 +11,32 @@ export function projectsController({projectsService, jobsService}) {
             return projectsService.findAll()
         },
 
+        async get(req, reply) {
+            const id = new ObjectId(req.params.id)
+            const project = await projectsService.findById(id)
+            if (!project) return reply.code(404).send({error: 'project not found'})
+            return project
+        },
+
+        async update(req, reply) {
+            const id = new ObjectId(req.params.id)
+            const project = await projectsService.update(id, req.body ?? {})
+            if (!project) return reply.code(404).send({error: 'project not found'})
+            return project
+        },
+
+        async remove(req, reply) {
+            const id = new ObjectId(req.params.id)
+            const res = await projectsService.delete(id)
+            if (res.deletedCount === 0) return reply.code(404).send({error: 'project not found'})
+            return {ok: true}
+        },
+
+        async listJobs(req, reply) {
+            const id = new ObjectId(req.params.id)
+            return jobsService.findByProject(id)
+        },
+
         async syncJobs(req, reply) {
             const id = new ObjectId(req.params.id)
             try {

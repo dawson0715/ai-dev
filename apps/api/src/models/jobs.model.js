@@ -50,6 +50,21 @@ export function jobsModel(db) {
                     $set: setFields
                 }
             )
+        },
+
+        findByProject(projectId) {
+            return collection
+                .find({project_id: projectId})
+                .sort({created_at: -1})
+                .toArray()
+        },
+
+        findAll({limit = 100} = {}) {
+            return collection
+                .find({})
+                .sort({created_at: -1})
+                .limit(limit)
+                .toArray()
         }
     }
 }

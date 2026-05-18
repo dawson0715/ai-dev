@@ -2,6 +2,28 @@ import {ObjectId} from 'mongodb'
 
 export function jobsController({jobsService}) {
     return {
+        async list(req, reply) {
+            const limit = req.query?.limit ? Number(req.query.limit) : 100
+            return jobsService.findAll({limit})
+        },
+
+        async get(req, reply) {
+            const id = new ObjectId(req.params.id)
+            const job = await jobsService.findById(id)
+            if (!job) return reply.code(404).send({error: 'job not found'})
+            return job
+        },
+
+        async retry(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.retry(id)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
         async claim(req, reply) {
             const result = await jobsService.claim()
             if (!result) return reply.code(204).send()
