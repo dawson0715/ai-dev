@@ -24,6 +24,8 @@ Queste scelte sono state prese esplicitamente nella conversazione di progettazio
 
 **Workflow ClickUp comune a tutte le liste**: stati `Todo → In Progress → Review`. L'agente prende task in `Todo` e li sposta in `In Progress` quando apre la MR.
 
+**Deploy**: api e worker su **Docker Swarm** (Linux single-host MVP), immagini su **ghcr.io** via GitHub Actions. La web-ui (quando arriverà, vedi sotto su V1) sarà uno **statico su Firebase Hosting** — solo hosting, nessuna Cloud Function / Firestore. Il repo di **questo** codice (`api` + `worker`) è su **GitHub** (`github.com/dawson0715/ai-dev`); le menzioni a "GitLab" nel resto del documento si riferiscono ai repo *target* gestiti dall'agente, non a dove vive il codice dell'agente stesso.
+
 ## Architettura corrente
 
 Due servizi Node.js (ESM, Node 22) che condividono una MongoDB e un volume scratch montato dall'host:
@@ -47,13 +49,21 @@ Tre collection principali. Lo schema attuale del codice è incompleto rispetto a
 
 ## Running
 
+**Dev locale** (`docker-compose.yml`):
 ```bash
 docker compose up --build
 ```
+Attualmente è scommentato **solo `mongo`**. I blocchi `api` e `worker` esistono come commento — scommentali per girare lo stack pieno in Docker, oppure lancia ciascun servizio localmente con `MONGO_URL=mongodb://localhost:27017/agent npm start` da `apps/api` o `apps/worker` (mongo deve essere già up).
 
-Nota: in `docker-compose.yml` attualmente è scommentato **solo `mongo`**. I blocchi `api` e `worker` esistono come commento — scommentali per girare lo stack pieno in Docker, oppure lancia ciascun servizio localmente con `MONGO_URL=mongodb://localhost:27017/agent npm start` da `apps/api` o `apps/worker` (mongo deve essere già up).
+**Build immagini** (`.github/workflows/build-push.yml`): matrix `[api, worker]`, push su `ghcr.io/dawson0715/ai-dev/{api,worker}` con tag `sha-<short>`, nome branch, e `latest` su `main`. Trigger su push a `main` + dispatch manuale.
 
-Nessun test/lint/build configurato. L'unico npm script per app è `start`.
+**Deploy prod** (`stack.yml`): file separato per Swarm, NON il compose di dev. Uso:
+```bash
+docker stack deploy -c stack.yml agent --with-registry-auth
+```
+Variabili richieste a deploy time: `IMAGE_TAG` (default `latest`, in prod usa `sha-...`), `CLICKUP_TOKEN`, `ANTHROPIC_API_KEY`. Bind mount `/opt` su `${WORKSPACE_DIR:-/var/lib/ai-dev-agent/opt}` dell'host.
+
+Nessun test/lint/build js configurato. L'unico npm script per app è `start`.
 
 ## Convenzioni
 
