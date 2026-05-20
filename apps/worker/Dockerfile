@@ -22,8 +22,8 @@ COPY package.json ./
 COPY src ./src
 
 # Workspace per cache cloni e worktrees. Owned da `node` per il caso "no bind mount".
-# Se monti un volume host su /opt, assicurati che sia scrivibile da uid 1000.
-RUN mkdir -p /opt/cache /opt/worktrees && chown -R node:node /opt
+# Se monti un volume host su /srv, assicurati che sia scrivibile da uid 1000.
+RUN mkdir -p /srv/cache /srv/worktrees && chown -R node:node /srv
 
 USER node
 ENV WORKSPACE=/

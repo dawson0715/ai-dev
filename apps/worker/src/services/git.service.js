@@ -20,7 +20,7 @@ async function isGitRepo(p) {
 }
 
 export async function ensureClone(project, workspace) {
-    const repoPath = path.join(workspace, 'opt/cache', project._id.toString())
+    const repoPath = path.join(workspace, 'cache', project._id.toString())
 
     if (await isGitRepo(repoPath)) {
         return repoPath
