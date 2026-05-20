@@ -9,6 +9,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  VITE_API_URL: "http://cs3-om0.oddmonitor.com/api"
+
 jobs:
   deploy_live:
     runs-on: ubuntu-latest
