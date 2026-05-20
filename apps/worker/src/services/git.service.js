@@ -2,6 +2,13 @@ import simpleGit from 'simple-git'
 import fs from 'fs/promises'
 import path from 'path'
 
+// Identità per i commit dell'agente. Nel container non c'è git config globale,
+// quindi senza questo `git commit` fallisce con "Author identity unknown".
+// Iniettata come `-c user.*` sul comando, così resta scoped al commit e non
+// dipende dall'HOME del container. Sovrascrivibile via env.
+const GIT_AUTHOR_NAME = process.env.GIT_AUTHOR_NAME ?? 'AI Dev Agent'
+const GIT_AUTHOR_EMAIL = process.env.GIT_AUTHOR_EMAIL ?? 'agent@ai-dev.local'
+
 function injectPat(url, token) {
     if (!token) return url
     const u = new URL(url)
@@ -63,7 +70,9 @@ export async function pruneWorktrees(repoPath) {
 }
 
 export async function commitAll(worktreePath, message) {
-    const git = simpleGit(worktreePath)
+    const git = simpleGit(worktreePath, {
+        config: [`user.name=${GIT_AUTHOR_NAME}`, `user.email=${GIT_AUTHOR_EMAIL}`]
+    })
     const status = await git.status()
     if (status.files.length === 0) return null
     await git.add(['-A'])
