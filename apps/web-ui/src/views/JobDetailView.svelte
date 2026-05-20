@@ -154,17 +154,10 @@
                 <span class="text-xs text-slate-500">{job.executions.length} totali</span>
             </div>
 
-            {#if lastExecution.system_prompt}
-                <details class="mb-3 group" open>
-                    <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">System prompt</summary>
-                    <pre class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-xs text-slate-300 whitespace-pre-wrap overflow-x-auto">{lastExecution.system_prompt}</pre>
-                </details>
-            {/if}
-
-            {#if lastExecution.user_prompt}
+            {#if lastExecution.prompt}
                 <details class="mb-3" open>
-                    <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">User prompt</summary>
-                    <pre class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-xs text-slate-300 whitespace-pre-wrap overflow-x-auto">{lastExecution.user_prompt}</pre>
+                    <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">Prompt</summary>
+                    <pre class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-xs text-slate-300 whitespace-pre-wrap overflow-x-auto">{lastExecution.prompt}</pre>
                 </details>
             {/if}
 

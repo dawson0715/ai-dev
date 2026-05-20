@@ -49,15 +49,23 @@ async function processNextJob() {
 
     console.log('processing job', job._id, job.clickup?.task_id)
 
+    const logs = []
+    const log = msg => {
+        logs.push(`[${new Date().toISOString()}] ${msg}`)
+        console.log(`job ${job._id}: ${msg}`)
+    }
+
     const startedAt = new Date()
 
     if (!project) {
+        log('project non trovato')
         await api.failJob(job._id, {
             execution: {
                 outcome: 'failed',
                 started_at: startedAt,
                 completed_at: new Date(),
                 duration_ms: 0,
+                logs,
                 error: 'project not found'
             }
         })
@@ -77,10 +85,12 @@ async function processNextJob() {
 
     try {
         await createWorktree(repoPath, worktreePath, branch, baseBranch)
+        log(`worktree pronto su ${branch} (base ${baseBranch})`)
 
         const claudeResult = await runClaude({cwd: worktreePath, prompt})
         stdout = claudeResult.stdout
         stderr = claudeResult.stderr
+        log(`claude completato (response ${stdout.length} char, stderr ${stderr.length} char)`)
 
         const commitMessage = job.clickup?.title ?? `task ${taskId}`
         const commitSha = await commitAll(worktreePath, commitMessage)
@@ -88,6 +98,7 @@ async function processNextJob() {
         if (commitSha === null) {
             const questionText = stdout.trim() || '(Claude non ha modificato file e non ha lasciato output)'
             const completedAt = new Date()
+            log('nessuna modifica ai file → ramo domande')
 
             await api.askQuestion(job._id, {
                 question_text: questionText,
@@ -100,11 +111,14 @@ async function processNextJob() {
                     completed_at: completedAt,
                     duration_ms: completedAt - startedAt,
                     worktree_path: worktreePath,
+                    logs,
                     question_text: questionText
                 }
             })
         } else {
+            log(`commit ${commitSha}`)
             await pushBranch(worktreePath, branch)
+            log(`branch ${branch} pushato`)
             const completedAt = new Date()
 
             await api.completeJob(job._id, {
@@ -117,6 +131,7 @@ async function processNextJob() {
                     completed_at: completedAt,
                     duration_ms: completedAt - startedAt,
                     worktree_path: worktreePath,
+                    logs,
                     branch,
                     commit_sha: commitSha,
                     pushed: true
@@ -126,6 +141,7 @@ async function processNextJob() {
         }
     } catch (err) {
         console.error(`job ${job._id} failed:`, err.message)
+        logs.push(`[${new Date().toISOString()}] errore: ${err.message}`)
         const completedAt = new Date()
         await api.failJob(job._id, {
             execution: {
@@ -137,6 +153,7 @@ async function processNextJob() {
                 completed_at: completedAt,
                 duration_ms: completedAt - startedAt,
                 worktree_path: worktreePath,
+                logs,
                 error: err.message
             }
         })
