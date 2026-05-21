@@ -43,6 +43,7 @@ export const api = {
     jobs: {
         list: (params) => request('/jobs', {query: params}),
         get: (id) => request(`/jobs/${id}`),
+        create: (data) => request('/jobs', {method: 'POST', body: data}),
         retry: (id) => request(`/jobs/${id}/retry`, {method: 'POST'}),
         update: (id, data) => request(`/jobs/${id}`, {method: 'PATCH', body: data}),
         fail: (id, body = {}) => request(`/jobs/${id}/fail`, {method: 'POST', body})

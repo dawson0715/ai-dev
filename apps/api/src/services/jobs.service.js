@@ -32,6 +32,19 @@ export function jobsService(db) {
             return {ok: true}
         },
 
+        async createManual(projectId, {title, description}) {
+            const project = await projects.findById(projectId)
+            if (!project) throw notFound('project not found')
+
+            const cleanTitle = (title ?? '').trim() || 'Job manuale'
+            const res = await jobs.insertManual({
+                projectId,
+                title: cleanTitle,
+                description: (description ?? '').trim()
+            })
+            return {ok: true, job_id: res.insertedId.toString()}
+        },
+
         async syncProject(projectId) {
             if (!CLICKUP_TOKEN) return {created: 0, warning: 'CLICKUP_TOKEN not set'}
 

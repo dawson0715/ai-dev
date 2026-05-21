@@ -47,7 +47,7 @@ async function processNextJob() {
 
     const {job, project} = claimed
 
-    console.log('processing job', job._id, job.clickup?.task_id)
+    console.log('processing job', job._id, job.clickup?.task_id ?? 'manual')
 
     const logs = []
     const log = msg => {
@@ -92,7 +92,7 @@ async function processNextJob() {
         stderr = claudeResult.stderr
         log(`claude completato (response ${stdout.length} char, stderr ${stderr.length} char)`)
 
-        const commitMessage = job.clickup?.title ?? `task ${taskId}`
+        const commitMessage = job.title ?? job.clickup?.title ?? `task ${taskId}`
         const commitSha = await commitAll(worktreePath, commitMessage)
 
         if (commitSha === null) {

@@ -159,9 +159,11 @@
                                     <StatusBadge status={job.status}/>
                                     {#if job.clickup?.task_id}
                                         <span class="text-xs text-slate-500 font-mono truncate">{job.clickup.task_id}</span>
+                                    {:else}
+                                        <span class="text-xs text-slate-400 px-1.5 py-0.5 rounded ring-1 ring-inset ring-slate-700">manuale</span>
                                     {/if}
                                 </div>
-                                <div class="font-medium text-slate-100 truncate">{job.clickup?.title ?? '(senza titolo)'}</div>
+                                <div class="font-medium text-slate-100 truncate">{job.title ?? job.clickup?.title ?? '(senza titolo)'}</div>
                             </div>
                             <div class="flex items-center gap-4 text-xs text-slate-500 shrink-0">
                                 <span>{formatRelative(job.created_at)}</span>

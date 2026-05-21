@@ -78,9 +78,11 @@
                 <StatusBadge status={job.status}/>
                 {#if job.clickup?.task_id}
                     <span class="text-xs text-slate-500 font-mono">{job.clickup.task_id}</span>
+                {:else}
+                    <span class="text-xs text-slate-400 px-1.5 py-0.5 rounded ring-1 ring-inset ring-slate-700">manuale</span>
                 {/if}
             </div>
-            <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">{job.clickup?.title ?? '(senza titolo)'}</h1>
+            <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">{job.title ?? job.clickup?.title ?? '(senza titolo)'}</h1>
             {#if job.clickup?.url}
                 <a href={job.clickup.url} target="_blank" rel="noopener" class="text-sm text-brand-300 hover:text-brand-200 inline-flex items-center gap-1 mt-1">
                     Apri su ClickUp
@@ -140,10 +142,10 @@
         </Card>
     {/if}
 
-    {#if job.clickup?.description}
+    {#if job.description || job.clickup?.description}
         <Card class="mb-6">
             <h2 class="font-semibold text-slate-100 mb-3">Descrizione task</h2>
-            <pre class="whitespace-pre-wrap text-sm text-slate-300 font-sans">{job.clickup.description}</pre>
+            <pre class="whitespace-pre-wrap text-sm text-slate-300 font-sans">{job.description || job.clickup?.description}</pre>
         </Card>
     {/if}
 

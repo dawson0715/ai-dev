@@ -48,18 +48,36 @@ export async function runClaude({cwd, prompt}) {
 }
 
 export function buildPrompt(job) {
-    const title = job.clickup?.title ?? ''
-    const description = job.clickup?.description ?? ''
+    // I job manuali (creati da web UI) non hanno una card ClickUp: titolo e
+    // descrizione vivono al top level. I job ClickUp li tengono sotto `clickup`.
+    const isClickup = Boolean(job.clickup?.task_id)
+    const title = job.title ?? job.clickup?.title ?? ''
+    const description = job.description ?? job.clickup?.description ?? ''
     const taskId = job.clickup?.task_id ?? ''
     const url = job.clickup?.url ?? ''
 
+    const header = isClickup
+        ? [
+            `Stai lavorando su un task ClickUp.`,
+            ``,
+            `# Task`,
+            `ID: ${taskId}`,
+            `URL: ${url}`,
+            `Titolo: ${title}`
+        ]
+        : [
+            `Stai lavorando su un task di sviluppo creato manualmente.`,
+            ``,
+            `# Task`,
+            `Titolo: ${title}`
+        ]
+
+    const questionsDestination = isClickup
+        ? `Saranno postate come commento sul task ClickUp.`
+        : `Saranno salvate nel log del job e visibili dalla web UI.`
+
     return [
-        `Stai lavorando su un task ClickUp.`,
-        ``,
-        `# Task`,
-        `ID: ${taskId}`,
-        `URL: ${url}`,
-        `Titolo: ${title}`,
+        ...header,
         ``,
         `## Descrizione`,
         description || '(nessuna descrizione)',
@@ -72,7 +90,7 @@ export function buildPrompt(job) {
         ``,
         `2. DOMANDE: se ti servono chiarimenti prima di poter procedere, NON modificare`,
         `   ALCUN file. Stampa SOLO su stdout le domande in italiano, una per riga o in`,
-        `   forma di elenco breve. Saranno postate come commento sul task ClickUp.`,
+        `   forma di elenco breve. ${questionsDestination}`,
         ``,
         `Il worker distingue i due casi guardando se ci sono modifiche al repo:`,
         `nessuna modifica = ramo domande; almeno una modifica = ramo implementazione.`

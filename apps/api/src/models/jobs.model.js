@@ -1,9 +1,41 @@
 export function jobsModel(db) {
     const collection = db.collection('jobs')
 
+    const taskIdIndex = {
+        key: {'clickup.task_id': 1},
+        options: {
+            unique: true,
+            // I job manuali non hanno clickup.task_id: l'indice partial evita
+            // che più documenti senza task_id collidano sul valore null.
+            partialFilterExpression: {'clickup.task_id': {$exists: true}}
+        }
+    }
+
     return {
-        init() {
-            return collection.createIndex({'clickup.task_id': 1}, {unique: true})
+        async init() {
+            try {
+                await collection.createIndex(taskIdIndex.key, taskIdIndex.options)
+            } catch (err) {
+                // Indice preesistente con opzioni diverse (vecchia unique senza
+                // partialFilterExpression): lo ricreo con la nuova definizione.
+                if (err.code === 85 || err.code === 86) {
+                    await collection.dropIndex('clickup.task_id_1')
+                    await collection.createIndex(taskIdIndex.key, taskIdIndex.options)
+                } else {
+                    throw err
+                }
+            }
+        },
+
+        insertManual({projectId, title, description}) {
+            return collection.insertOne({
+                project_id: projectId,
+                status: 'pending',
+                source: 'manual',
+                title,
+                description,
+                created_at: new Date()
+            })
         },
 
         upsertFromTask(projectId, listId, task) {

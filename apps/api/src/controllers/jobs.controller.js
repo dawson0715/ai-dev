@@ -7,6 +7,28 @@ export function jobsController({jobsService}) {
             return jobsService.findAll({limit})
         },
 
+        async create(req, reply) {
+            const {project_id, title, description} = req.body ?? {}
+            if (!project_id) return reply.code(400).send({error: 'project_id is required'})
+            if (!title && !description) {
+                return reply.code(400).send({error: 'title or description is required'})
+            }
+
+            let projectId
+            try {
+                projectId = new ObjectId(project_id)
+            } catch {
+                return reply.code(400).send({error: 'invalid project_id'})
+            }
+
+            try {
+                return await jobsService.createManual(projectId, {title, description})
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
         async get(req, reply) {
             const id = new ObjectId(req.params.id)
             const job = await jobsService.findById(id)
