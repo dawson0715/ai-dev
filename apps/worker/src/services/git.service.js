@@ -9,11 +9,47 @@ import path from 'path'
 const GIT_AUTHOR_NAME = process.env.GIT_AUTHOR_NAME ?? 'AI Dev Agent'
 const GIT_AUTHOR_EMAIL = process.env.GIT_AUTHOR_EMAIL ?? 'agent@ai-dev.local'
 
-function injectPat(url, token) {
-    if (!token) return url
+// Credenziali dei service account GitLab: mappa JSON { nome_service_account: "<user>:<password>" }
+// passata via env GITLAB_SERVICE_ACCOUNTS. Il progetto referenzia solo il nome del service
+// account (gitlab.service_account, tipicamente il path del gruppo top-level); le credenziali
+// vere non sono mai salvate su Mongo. Cache in-process: una rotazione richiede il restart del worker.
+let serviceAccountCreds
+
+function serviceAccountMap() {
+    if (serviceAccountCreds) return serviceAccountCreds
+    const raw = process.env.GITLAB_SERVICE_ACCOUNTS
+    if (!raw) {
+        serviceAccountCreds = {}
+        return serviceAccountCreds
+    }
+    try {
+        serviceAccountCreds = JSON.parse(raw)
+    } catch (err) {
+        throw new Error(`GITLAB_SERVICE_ACCOUNTS non è un JSON valido: ${err.message}`)
+    }
+    return serviceAccountCreds
+}
+
+// Ritorna { username, password } per il service account. Il valore in mappa è "<user>:<password>";
+// se manca il ":" l'intero valore è trattato come token con username "oauth2" (compat).
+function credentialsForServiceAccount(serviceAccount) {
+    if (!serviceAccount) {
+        throw new Error('Progetto senza gitlab.service_account: impossibile autenticare GitLab')
+    }
+    const value = serviceAccountMap()[serviceAccount]
+    if (!value) {
+        throw new Error(`Nessuna credenziale per il service account "${serviceAccount}" in GITLAB_SERVICE_ACCOUNTS`)
+    }
+    const sep = value.indexOf(':')
+    if (sep === -1) return {username: 'oauth2', password: value}
+    return {username: value.slice(0, sep), password: value.slice(sep + 1)}
+}
+
+function injectCredentials(url, {username, password}) {
+    if (!password) return url
     const u = new URL(url)
-    u.username = 'oauth2'
-    u.password = token
+    u.username = username
+    u.password = password
     return u.toString()
 }
 
@@ -35,7 +71,8 @@ export async function ensureClone(project, workspace) {
 
     await fs.mkdir(repoPath, {recursive: true})
 
-    const authedUrl = injectPat(project.gitlab.url, project.gitlab.token)
+    const creds = credentialsForServiceAccount(project.gitlab.service_account)
+    const authedUrl = injectCredentials(project.gitlab.url, creds)
     await simpleGit().clone(authedUrl, repoPath)
 
     return repoPath

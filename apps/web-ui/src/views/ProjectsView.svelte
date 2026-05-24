@@ -19,7 +19,7 @@
         name: '',
         clickup_list_id: '',
         gitlab_url: '',
-        gitlab_token: ''
+        gitlab_service_account: ''
     })
 
     async function load() {
@@ -34,7 +34,7 @@
     }
 
     function resetForm() {
-        form = {name: '', clickup_list_id: '', gitlab_url: '', gitlab_token: ''}
+        form = {name: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: ''}
     }
 
     async function submit(e) {
@@ -110,8 +110,8 @@
         <Field label="ClickUp list ID" bind:value={form.clickup_list_id} required placeholder="901xxxxxxxx"
                hint="Identificatore della lista ClickUp da cui leggere i task."/>
         <Field label="GitLab repo URL" bind:value={form.gitlab_url} required placeholder="https://gitlab.com/org/repo.git"/>
-        <Field label="GitLab access token" type="password" bind:value={form.gitlab_token}
-               hint="Token con permessi di push e merge request sul progetto."/>
+        <Field label="GitLab service account" bind:value={form.gitlab_service_account} required placeholder="nome-gruppo"
+               hint="Nome del service account (path del gruppo top-level). Il token vive nel worker in GITLAB_SERVICE_ACCOUNTS."/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => modalOpen = false}>Annulla</Button>
             <Button type="submit" loading={submitting} disabled={submitting}>Crea</Button>

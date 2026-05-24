@@ -16,7 +16,7 @@ Queste scelte sono state prese esplicitamente nella conversazione di progettazio
 
 **Niente backoffice/frontend in V1.** L'agente legge e scrive su ClickUp; l'utente ispeziona il DB direttamente (Mongo Express / Compass). Una dashboard Svelte è stata discussa ma rinviata.
 
-**Token ClickUp unico globale** (env), valido per tutte le liste. I token GitLab sono **per progetto** (in `projects.gitlab.token`).
+**Token ClickUp unico globale** (env), valido per tutte le liste. **Auth GitLab via service account**: il progetto salva solo `projects.gitlab.service_account` (nome del service account, per convenzione il path del gruppo GitLab top-level); le credenziali vere NON sono su Mongo ma in env `GITLAB_SERVICE_ACCOUNTS`, una mappa JSON `{ nome_service_account: "<user>:<password>" }` letta dal worker (senza `:` il valore è un token con username `oauth2`). (Revisione della scelta iniziale "token GitLab per progetto in `projects.gitlab.token`".)
 
 **Mapping progetto = una lista ClickUp ↔ un repo GitLab.** Creato a runtime via `POST /projects` (URL GitLab, token GitLab, list_id ClickUp), non da file di config.
 
@@ -69,5 +69,5 @@ Nessun test/lint/build js configurato. L'unico npm script per app è `start`.
 
 - ESM ovunque (`"type": "module"`). Top-level `await` usato nei due entry point (es. `mongo.connect()` al load del modulo) — tienine conto quando rifattorizzi lo startup.
 - I path nei container sono assoluti (`/opt/...`) e assumono il bind mount di `docker-compose.yml`. Se giri fuori da Docker, punta a un path esistente sull'host o adatta il codice.
-- I token GitLab sono in chiaro nel documento `projects` (scope MVP) — segnalalo se introduci code path che li espongono.
+- I token GitLab NON sono più nel documento `projects`: il progetto referenzia un `gitlab.service_account` e le credenziali vivono in env `GITLAB_SERVICE_ACCOUNTS` (mappa JSON nome→`"<user>:<password>"`), risolte in `apps/worker/src/services/git.service.js`. La risoluzione è cache in-process: una rotazione richiede il restart del worker.
 - Bug noto in `apps/worker/src/index.js`: con `mongodb` v6 `findOneAndUpdate` restituisce direttamente il documento (no wrapper `.value`) salvo `includeResultMetadata: true`. Il codice attuale fa `job?.value._id`, quindi tratterà ogni risultato come "nessun job". Da sistemare quando il worker viene reso funzionante.

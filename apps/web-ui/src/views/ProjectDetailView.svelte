@@ -19,7 +19,7 @@
     let syncing = $state(false)
     let editOpen = $state(false)
     let confirmDelete = $state(false)
-    let editForm = $state({name: '', clickup_list_id: '', gitlab_url: '', gitlab_token: '', gitlab_default_branch: ''})
+    let editForm = $state({name: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: '', gitlab_default_branch: ''})
     let saving = $state(false)
 
     async function load() {
@@ -35,7 +35,7 @@
                 name: p.name ?? '',
                 clickup_list_id: p.clickup?.list_id ?? '',
                 gitlab_url: p.gitlab?.url ?? '',
-                gitlab_token: '',
+                gitlab_service_account: p.gitlab?.service_account ?? '',
                 gitlab_default_branch: p.gitlab?.default_branch ?? ''
             }
         } catch (e) {
@@ -63,9 +63,7 @@
         e.preventDefault()
         saving = true
         try {
-            const payload = {...editForm}
-            if (!payload.gitlab_token) delete payload.gitlab_token
-            await api.projects.update(projectId, payload)
+            await api.projects.update(projectId, {...editForm})
             toast.success('Progetto aggiornato')
             editOpen = false
             await load()
@@ -182,7 +180,8 @@
         <Field label="Nome" bind:value={editForm.name}/>
         <Field label="ClickUp list ID" bind:value={editForm.clickup_list_id}/>
         <Field label="GitLab URL" bind:value={editForm.gitlab_url}/>
-        <Field label="GitLab token (lascia vuoto per non cambiarlo)" type="password" bind:value={editForm.gitlab_token}/>
+        <Field label="GitLab service account" bind:value={editForm.gitlab_service_account} placeholder="nome-gruppo"
+               hint="Path del gruppo top-level. Il token vive nel worker in GITLAB_SERVICE_ACCOUNTS."/>
         <Field label="Branch di default" bind:value={editForm.gitlab_default_branch} placeholder="main"/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => editOpen = false}>Annulla</Button>

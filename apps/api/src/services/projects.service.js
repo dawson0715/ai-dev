@@ -4,11 +4,11 @@ export function projectsService(db) {
     const model = projectsModel(db)
 
     return {
-        async create({name, clickup_list_id, gitlab_url, gitlab_token}) {
+        async create({name, clickup_list_id, gitlab_url, gitlab_service_account}) {
             const result = await model.insert({
                 name,
                 clickup: {list_id: clickup_list_id},
-                gitlab: {url: gitlab_url, token: gitlab_token},
+                gitlab: {url: gitlab_url, service_account: gitlab_service_account},
                 created_at: new Date()
             })
             return {project_id: result.insertedId.toString()}
@@ -25,7 +25,9 @@ export function projectsService(db) {
                 allowed['clickup.list_id'] = fields.clickup_list_id
             }
             if (fields.gitlab_url !== undefined) allowed['gitlab.url'] = fields.gitlab_url
-            if (fields.gitlab_token !== undefined) allowed['gitlab.token'] = fields.gitlab_token
+            if (fields.gitlab_service_account !== undefined) {
+                allowed['gitlab.service_account'] = fields.gitlab_service_account
+            }
             if (fields.gitlab_default_branch !== undefined) {
                 allowed['gitlab.default_branch'] = fields.gitlab_default_branch
             }

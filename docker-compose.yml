@@ -26,6 +26,7 @@ services:
 #      - MONGO_URL=mongodb://mongo:27017/agent
 #      - CLICKUP_TOKEN=${CLICKUP_TOKEN}
 #      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+#      - GITLAB_SERVICE_ACCOUNTS=${GITLAB_SERVICE_ACCOUNTS}
 #      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-30000}
 #    volumes:
 #      - ./opt/computer:/opt/computer
