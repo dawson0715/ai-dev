@@ -81,9 +81,12 @@
             {/each}
         </nav>
 
-        <div class="px-5 py-4 border-t border-slate-800 text-xs text-slate-500 flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full {healthStatus === 'up' ? 'bg-emerald-400' : healthStatus === 'down' ? 'bg-rose-500' : 'bg-amber-400'}"></span>
-            API {healthStatus === 'up' ? 'online' : healthStatus === 'down' ? 'offline' : '...'}
+        <div class="px-5 py-4 border-t border-slate-800 text-xs text-slate-500">
+            <div class="flex items-center gap-2">
+                <span class="h-2 w-2 rounded-full {healthStatus === 'up' ? 'bg-emerald-400' : healthStatus === 'down' ? 'bg-rose-500' : 'bg-amber-400'}"></span>
+                API {healthStatus === 'up' ? 'online' : healthStatus === 'down' ? 'offline' : '...'}
+            </div>
+            <div class="mt-2 text-slate-600 tabular-nums">v{__APP_VERSION__}</div>
         </div>
     </aside>
 

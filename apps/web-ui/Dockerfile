@@ -6,6 +6,9 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 COPY . .
+# Versione mostrata in UI: passata dal CI (tag git). Il .git non è nel context.
+ARG APP_VERSION=dev
+ENV VITE_APP_VERSION=$APP_VERSION
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime
