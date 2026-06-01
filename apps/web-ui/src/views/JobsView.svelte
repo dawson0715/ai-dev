@@ -47,7 +47,8 @@
         e.preventDefault()
         submitting = true
         try {
-            await api.jobs.create(form)
+            const {project_id, ...data} = form
+            await api.jobs.create(project_id, data)
             toast.success('Job creato e messo in coda')
             modalOpen = false
             await load()

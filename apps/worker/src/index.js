@@ -76,7 +76,7 @@ async function processNextJob() {
 
     const taskId = job.clickup?.task_id ?? job._id
     const branch = `feature/${taskId}`
-    const baseBranch = project.gitlab?.default_branch ?? 'main'
+    const baseBranch = project.gitlab?.default_branch?.trim() || 'main'
     const worktreePath = path.join(WORKSPACE, 'worktrees', job._id)
     const prompt = buildPrompt(job)
 

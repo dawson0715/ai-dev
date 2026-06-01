@@ -22,10 +22,10 @@ export async function registerRoutes(app, db) {
     app.patch('/projects/:id', projectsCtl.update)
     app.delete('/projects/:id', projectsCtl.remove)
     app.get('/projects/:id/jobs', projectsCtl.listJobs)
+    app.post('/projects/:id/jobs', projectsCtl.createJob)
     app.post('/projects/:id/jobs/sync', projectsCtl.syncJobs)
 
     app.get('/jobs', jobsCtl.list)
-    app.post('/jobs', jobsCtl.create)
     app.get('/jobs/:id', jobsCtl.get)
     app.post('/jobs/claim', jobsCtl.claim)
     app.patch('/jobs/:id', jobsCtl.update)

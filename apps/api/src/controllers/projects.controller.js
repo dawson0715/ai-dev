@@ -37,6 +37,27 @@ export function projectsController({projectsService, jobsService}) {
             return jobsService.findByProject(id)
         },
 
+        async createJob(req, reply) {
+            const {title, description} = req.body ?? {}
+            if (!title && !description) {
+                return reply.code(400).send({error: 'title or description is required'})
+            }
+
+            let projectId
+            try {
+                projectId = new ObjectId(req.params.id)
+            } catch {
+                return reply.code(400).send({error: 'invalid project id'})
+            }
+
+            try {
+                return await jobsService.createManual(projectId, {title, description})
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
         async syncJobs(req, reply) {
             const id = new ObjectId(req.params.id)
             try {
