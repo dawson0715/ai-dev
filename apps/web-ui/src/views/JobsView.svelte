@@ -1,7 +1,7 @@
 <script>
     import {api} from '../lib/api.js'
     import {toast} from '../lib/toast.svelte.js'
-    import {formatRelative} from '../lib/format.js'
+    import {formatRelative, formatCurrency} from '../lib/format.js'
     import {go} from '../lib/router.svelte.js'
     import Button from '../components/Button.svelte'
     import Card from '../components/Card.svelte'
@@ -18,7 +18,7 @@
 
     let modalOpen = $state(false)
     let submitting = $state(false)
-    let form = $state({project_id: '', title: '', description: ''})
+    let form = $state({project_id: '', title: '', description: '', estimate: ''})
 
     const selectClass = 'block w-full rounded-lg bg-slate-950/50 ring-1 ring-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 transition'
 
@@ -39,7 +39,7 @@
     }
 
     function openModal() {
-        form = {project_id: projects[0]?._id ?? '', title: '', description: ''}
+        form = {project_id: projects[0]?._id ?? '', title: '', description: '', estimate: ''}
         modalOpen = true
     }
 
@@ -120,6 +120,7 @@
                             <div class="font-medium text-slate-100 truncate">{job.title ?? job.clickup?.title ?? '(senza titolo)'}</div>
                         </div>
                         <div class="flex items-center gap-3 text-xs text-slate-500 shrink-0">
+                            {#if job.estimate}<span class="text-slate-400 tabular-nums">{formatCurrency(job.estimate)}</span>{/if}
                             <span>{formatRelative(job.created_at)}</span>
                             <svg class="hidden sm:block" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
                         </div>
@@ -146,6 +147,8 @@
         <Field label="Descrizione" bind:value={form.description} multiline rows={6}
                placeholder="Cosa deve fare l'agente. Più dettagli = meno domande."
                hint="Diventa il prompt per l'agente. Nessuna card ClickUp viene creata o aggiornata."/>
+        <Field label="Stima (€)" type="number" step="0.01" min="0" bind:value={form.estimate}
+               placeholder="0.00" hint="Forfait stimato del task, sommato nel forfait dello sprint."/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => modalOpen = false}>Annulla</Button>
             <Button type="submit" loading={submitting} disabled={submitting}>Crea job</Button>

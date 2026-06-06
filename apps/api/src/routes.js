@@ -52,6 +52,9 @@ export async function registerRoutes(app, db) {
     app.get('/sprints', sprintsCtl.list)
     app.post('/sprints', sprintsCtl.create)
     app.get('/sprints/:id', sprintsCtl.get)
+    app.patch('/sprints/:id', sprintsCtl.update)
+    app.post('/sprints/:id/invoice', sprintsCtl.invoice)
+    app.post('/sprints/:id/invoice/update', sprintsCtl.invoiceUpdate)
 
     // Endpoint pubblico (senza auth): vista cliente via token.
     app.get('/public/sprints/:token', sprintsCtl.publicByToken)

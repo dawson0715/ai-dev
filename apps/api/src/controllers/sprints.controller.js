@@ -32,6 +32,48 @@ export function sprintsController({sprintsService}) {
             }
         },
 
+        async update(req, reply) {
+            let id
+            try {
+                id = new ObjectId(req.params.id)
+            } catch {
+                return reply.code(400).send({error: 'invalid sprint id'})
+            }
+            try {
+                return await sprintsService.update(id, req.body ?? {})
+            } catch (err) {
+                return handle(err, reply)
+            }
+        },
+
+        async invoice(req, reply) {
+            let id
+            try {
+                id = new ObjectId(req.params.id)
+            } catch {
+                return reply.code(400).send({error: 'invalid sprint id'})
+            }
+            try {
+                return await sprintsService.createInvoice(id)
+            } catch (err) {
+                return handle(err, reply)
+            }
+        },
+
+        async invoiceUpdate(req, reply) {
+            let id
+            try {
+                id = new ObjectId(req.params.id)
+            } catch {
+                return reply.code(400).send({error: 'invalid sprint id'})
+            }
+            try {
+                return await sprintsService.updateInvoice(id)
+            } catch (err) {
+                return handle(err, reply)
+            }
+        },
+
         // Endpoint pubblico: nessuna auth, risolve il cliente dal token.
         async publicByToken(req, reply) {
             try {

@@ -60,6 +60,9 @@ export const api = {
         list: (params) => request('/sprints', {query: params}),
         get: (id) => request(`/sprints/${id}`),
         create: (data) => request('/sprints', {method: 'POST', body: data}),
+        update: (id, data) => request(`/sprints/${id}`, {method: 'PATCH', body: data}),
+        invoice: (id) => request(`/sprints/${id}/invoice`, {method: 'POST'}),
+        invoiceUpdate: (id) => request(`/sprints/${id}/invoice/update`, {method: 'POST'}),
         public: (token) => request(`/public/sprints/${token}`)
     }
 }

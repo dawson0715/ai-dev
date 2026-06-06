@@ -1,9 +1,10 @@
 <script>
     import {api} from '../lib/api.js'
     import {toast} from '../lib/toast.svelte.js'
-    import {formatDate, formatRelative} from '../lib/format.js'
+    import {formatDate, formatRelative, formatCurrency} from '../lib/format.js'
     import Button from '../components/Button.svelte'
     import Card from '../components/Card.svelte'
+    import Field from '../components/Field.svelte'
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
     import Modal from '../components/Modal.svelte'
@@ -14,15 +15,31 @@
     let loading = $state(true)
     let actionLoading = $state(false)
     let confirmFail = $state(false)
+    let estimateInput = $state('')
+    let savingEstimate = $state(false)
 
     async function load() {
         loading = true
         try {
             job = await api.jobs.get(jobId)
+            estimateInput = job?.estimate != null ? String(job.estimate) : ''
         } catch (e) {
             toast.error(`Errore: ${e.message}`)
         } finally {
             loading = false
+        }
+    }
+
+    async function saveEstimate() {
+        savingEstimate = true
+        try {
+            await api.jobs.update(jobId, {estimate: estimateInput})
+            toast.success('Stima aggiornata')
+            await load()
+        } catch (e) {
+            toast.error(`Salvataggio stima fallito: ${e.message}`)
+        } finally {
+            savingEstimate = false
         }
     }
 
@@ -115,6 +132,20 @@
             <div class="mt-1 text-sm text-slate-200">{formatDate(job.completed_at)}</div>
         </Card>
     </div>
+
+    <Card class="mb-6">
+        <h2 class="font-semibold text-slate-100 mb-1">Stima costo</h2>
+        <p class="text-xs text-slate-500 mb-3">Forfait stimato del task (€). Sommato nel forfait dello sprint che lo include.</p>
+        <div class="flex items-end gap-3 max-w-xs">
+            <div class="flex-1">
+                <Field label="Stima (€)" type="number" step="0.01" min="0" bind:value={estimateInput} placeholder="0.00"/>
+            </div>
+            <Button onclick={saveEstimate} loading={savingEstimate}
+                    disabled={savingEstimate || estimateInput === (job.estimate != null ? String(job.estimate) : '')}>
+                Salva
+            </Button>
+        </div>
+    </Card>
 
     {#if job.gitlab}
         <Card class="mb-6">

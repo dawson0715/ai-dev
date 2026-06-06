@@ -3,6 +3,7 @@ import {sprintsModel} from '../models/sprints.model.js'
 import {jobsModel} from '../models/jobs.model.js'
 import {projectsModel} from '../models/projects.model.js'
 import {clientsModel} from '../models/clients.model.js'
+import {createInvoice as createInvoiceApi, updateInvoice as updateInvoiceApi} from './invoice.service.js'
 
 // Stato commerciale dello sprint (la voce fatturabile a forfait).
 export const SPRINT_STATUSES = ['preventivo', 'approvato', 'in_lavorazione', 'completato']
@@ -32,6 +33,7 @@ function jobView(job) {
         title: job.title ?? job.clickup?.title ?? '(senza titolo)',
         status: job.status,
         url: job.clickup?.url ?? null,
+        estimate: job.estimate ?? 0,
         cost_usd: job.cost_usd ?? 0,
         created_at: job.created_at
     }
@@ -42,6 +44,54 @@ export function sprintsService(db) {
     const jobs = jobsModel(db)
     const projects = projectsModel(db)
     const clients = clientsModel(db)
+
+    // Carica e valida sprint + cliente per una operazione di fatturazione.
+    async function resolveForInvoice(sprintId) {
+        const sprint = await model.findById(sprintId)
+        if (!sprint) throw notFound('sprint not found')
+
+        const price = toNumber(sprint.price)
+        if (price <= 0) throw badRequest('forfait dello sprint a 0: imposta un prezzo prima di fatturare')
+
+        const client = await clients.findById(sprint.client_id)
+        if (!client) throw notFound('client not found')
+
+        const clientId = Number(client.external_id)
+        if (!Number.isFinite(clientId)) {
+            throw badRequest('il cliente non ha un external_id numerico valido per il backoffice')
+        }
+        return {sprint, client, price, clientId}
+    }
+
+    // Corpo fattura Deplot (riga unica forfait). Stesso shape per create e update.
+    function buildInvoicePayload({sprint, client, price, clientId}, indt) {
+        const description = (sprint.note ?? '').trim() || `Sprint ${client.name ?? ''}`.trim() || 'Forfait sprint'
+        return {
+            clientId,
+            indt,
+            direction: 1,
+            discount: 0,
+            // note: max 100 caratteri lato backoffice.
+            note: description.slice(0, 100),
+            lines: [{description, amount: price, rate: price, time: 1}]
+        }
+    }
+
+    // Salva sullo sprint i riferimenti restituiti dalla fattura (create o update).
+    async function persistInvoice(sprintId, invoice, indt) {
+        const invoiceId = invoice?.id ?? null
+        const invoiceNumber = invoice?.number ?? null
+        const invoiceYear = invoice?.year ?? null
+
+        await model.update(sprintId, {
+            invoice_id: invoiceId != null ? String(invoiceId) : null,
+            invoice_number: invoiceNumber,
+            invoice_year: invoiceYear,
+            invoice_indt: indt,
+            invoiced_at: new Date()
+        })
+        return {ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber, invoice_year: invoiceYear, invoice}
+    }
 
     return {
         init: () => model.init(),
@@ -102,7 +152,7 @@ export function sprintsService(db) {
             }
 
             const aiCostUsd = found.reduce((sum, j) => sum + (j.cost_usd ?? 0), 0)
-            const cleanStatus = SPRINT_STATUSES.includes(status) ? status : 'completato'
+            const cleanStatus = SPRINT_STATUSES.includes(status) ? status : 'in_lavorazione'
 
             const res = await model.insert({
                 client_id: clientObjId,
@@ -120,6 +170,44 @@ export function sprintsService(db) {
             await jobs.assignToSprint(ids, sprintId)
 
             return {ok: true, sprint_id: sprintId.toString(), price: toNumber(price)}
+        },
+
+        // Modifica i campi fatturabili dello sprint (forfait + nota). NON tocca la
+        // fattura su Deplot: per propagare le modifiche usa updateInvoice().
+        async update(sprintId, {price, note}) {
+            const sprint = await model.findById(sprintId)
+            if (!sprint) throw notFound('sprint not found')
+
+            const fields = {}
+            if (price !== undefined) fields.price = toNumber(price)
+            if (note !== undefined) fields.note = (note ?? '').trim()
+            if (Object.keys(fields).length) await model.update(sprintId, fields)
+            return {ok: true}
+        },
+
+        // Genera la fattura dello sprint chiamando il backoffice (admin.deplot.xyz).
+        // Forfait = riga unica con amount = sprint.price; clientId = client.external_id.
+        // Numero/anno/totali li assegna il server; noi salviamo l'id restituito.
+        async createInvoice(sprintId) {
+            const ctx = await resolveForInvoice(sprintId)
+            if (ctx.sprint.invoice_id) throw badRequest('sprint gia fatturato')
+
+            const indt = new Date().toISOString().slice(0, 10)
+            // createInvoiceApi ritorna l'oggetto fattura (gia' spacchettato da {data,status}).
+            const invoice = await createInvoiceApi(buildInvoicePayload(ctx, indt))
+            return persistInvoice(sprintId, invoice, indt)
+        },
+
+        // Ri-sincronizza la fattura esistente su Deplot con gli attuali forfait/nota
+        // dello sprint (POST /v1/invoice/{id}/update). Mantiene numero e data originali.
+        async updateInvoice(sprintId) {
+            const ctx = await resolveForInvoice(sprintId)
+            if (!ctx.sprint.invoice_id) throw badRequest('sprint non ancora fatturato')
+
+            // Preserva la data (e quindi l'anno) della fattura originale.
+            const indt = ctx.sprint.invoice_indt ?? new Date().toISOString().slice(0, 10)
+            const invoice = await updateInvoiceApi(ctx.sprint.invoice_id, buildInvoicePayload(ctx, indt))
+            return persistInvoice(sprintId, invoice, indt)
         },
 
         // Vista pubblica (senza auth): risolve il cliente dal token e restituisce i suoi

@@ -25,14 +25,29 @@
     let loadingJobs = $state(false)
     let selected = $state(new Set())
     let form = $state(emptyForm())
+    // Diventa true quando l'utente tocca a mano il forfait: smettiamo di
+    // sovrascriverlo con la somma delle stime dei job selezionati.
+    let priceEdited = $state(false)
 
     function emptyForm() {
-        return {client_id: '', price: '', delivery_date: '', status: 'completato', note: ''}
+        return {client_id: '', price: '', delivery_date: '', status: 'in_lavorazione', note: ''}
     }
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
     const clientOptions = $derived(clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'})))
     const canCreate = $derived(Boolean(form.client_id) && selected.size > 0)
+
+    // Somma delle stime dei job selezionati: forfait di default dello sprint.
+    const selectedTotal = $derived(
+        billableJobs.reduce((sum, j) => sum + (selected.has(j._id) ? Number(j.estimate) || 0 : 0), 0)
+    )
+
+    // Finché l'utente non modifica il forfait a mano, lo teniamo allineato alla
+    // somma delle stime dei job selezionati.
+    $effect(() => {
+        if (priceEdited) return
+        form.price = selectedTotal ? String(selectedTotal) : ''
+    })
 
     async function load() {
         loading = true
@@ -52,6 +67,7 @@
 
     function openCreate() {
         form = emptyForm()
+        priceEdited = false
         if (filterClient) form.client_id = filterClient
         billableJobs = []
         selected = new Set()
@@ -62,10 +78,13 @@
     async function loadBillable() {
         selected = new Set()
         billableJobs = []
+        priceEdited = false
         if (!form.client_id) return
         loadingJobs = true
         try {
             billableJobs = await api.jobs.billable(form.client_id)
+            // Di default tutti i job non ancora associati a uno sprint entrano nello sprint.
+            selected = new Set(billableJobs.map((j) => j._id))
         } catch (e) {
             toast.error(`Errore caricamento job: ${e.message}`)
         } finally {
@@ -179,6 +198,7 @@
                                        onchange={() => toggle(job._id)}
                                        class="h-4 w-4 rounded border-slate-700 bg-slate-950 text-brand-500 focus:ring-brand-500"/>
                                 <span class="flex-1 min-w-0 text-sm text-slate-200 truncate">{job.title ?? job.clickup?.title ?? '(senza titolo)'}</span>
+                                <span class="text-xs text-slate-400 tabular-nums shrink-0">{formatCurrency(Number(job.estimate) || 0)}</span>
                             </li>
                         {/each}
                     </ul>
@@ -186,7 +206,9 @@
             </div>
 
             <div class="grid grid-cols-2 gap-3">
-                <Field label="Forfait (€)" type="number" bind:value={form.price} placeholder="0.00"/>
+                <Field label="Forfait (€)" type="number" step="0.01" min="0" bind:value={form.price}
+                       placeholder="0.00" oninput={() => priceEdited = true}
+                       hint="Default: somma delle stime dei job selezionati."/>
                 <Field label="Data consegna" type="date" bind:value={form.delivery_date}/>
             </div>
             <Select label="Stato" bind:value={form.status} options={SPRINT_STATUSES}/>

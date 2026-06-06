@@ -16,6 +16,10 @@ export function sprintsModel(db) {
 
         findById(id) {
             return collection.findOne({_id: id})
+        },
+
+        update(id, fields) {
+            return collection.updateOne({_id: id}, {$set: fields})
         }
     }
 }

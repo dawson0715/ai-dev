@@ -8,6 +8,8 @@
     import Spinner from '../components/Spinner.svelte'
     import EmptyState from '../components/EmptyState.svelte'
     import Button from '../components/Button.svelte'
+    import Modal from '../components/Modal.svelte'
+    import Field from '../components/Field.svelte'
 
     let {sprintId} = $props()
 
@@ -17,6 +19,13 @@
     let sprint = $state(null)
     let client = $state(null)
     let loading = $state(true)
+    let confirmInvoice = $state(false)
+    let invoicing = $state(false)
+    let editOpen = $state(false)
+    let editForm = $state({price: '', note: ''})
+    let saving = $state(false)
+    let confirmInvoiceUpdate = $state(false)
+    let updatingInvoice = $state(false)
 
     const publicUrl = $derived(
         client?.token ? `${window.location.origin}${window.location.pathname}#/public/sprint/${client.token}` : ''
@@ -35,6 +44,56 @@
             toast.error(`Errore: ${e.message}`)
         } finally {
             loading = false
+        }
+    }
+
+    async function generateInvoice() {
+        invoicing = true
+        try {
+            const r = await api.sprints.invoice(sprintId)
+            const ref = r.invoice_number ? `n. ${r.invoice_number}${r.invoice_year ? `/${r.invoice_year}` : ''}` : ''
+            toast.success(ref ? `Fattura ${ref} generata` : 'Fattura generata')
+            confirmInvoice = false
+            await load()
+        } catch (e) {
+            toast.error(`Generazione fattura fallita: ${e.message}`)
+        } finally {
+            invoicing = false
+        }
+    }
+
+    function openEdit() {
+        editForm = {price: sprint?.price != null ? String(sprint.price) : '', note: sprint?.note ?? ''}
+        editOpen = true
+    }
+
+    async function saveEdit(e) {
+        e.preventDefault()
+        saving = true
+        try {
+            await api.sprints.update(sprintId, {price: editForm.price, note: editForm.note})
+            toast.success(sprint.invoice_id ? 'Sprint aggiornato — ricordati di aggiornare la fattura' : 'Sprint aggiornato')
+            editOpen = false
+            await load()
+        } catch (e) {
+            toast.error(`Aggiornamento fallito: ${e.message}`)
+        } finally {
+            saving = false
+        }
+    }
+
+    async function syncInvoice() {
+        updatingInvoice = true
+        try {
+            const r = await api.sprints.invoiceUpdate(sprintId)
+            const ref = r.invoice_number ? `n. ${r.invoice_number}${r.invoice_year ? `/${r.invoice_year}` : ''}` : ''
+            toast.success(ref ? `Fattura ${ref} aggiornata` : 'Fattura aggiornata')
+            confirmInvoiceUpdate = false
+            await load()
+        } catch (e) {
+            toast.error(`Aggiornamento fattura fallito: ${e.message}`)
+        } finally {
+            updatingInvoice = false
         }
     }
 
@@ -68,7 +127,19 @@
             <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100">{client?.name ?? 'Sprint'}</h1>
             {#if sprint.note}<p class="text-slate-400 text-sm mt-1">{sprint.note}</p>{/if}
         </div>
-        <StatusBadge status={sprint.status}/>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <Button size="sm" variant="ghost" onclick={openEdit}>Modifica</Button>
+            {#if sprint.invoice_id}
+                <span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                    Fatturato{sprint.invoice_number ? ` · n. ${sprint.invoice_number}${sprint.invoice_year ? `/${sprint.invoice_year}` : ''}` : ''}
+                </span>
+                <Button size="sm" variant="secondary" onclick={() => confirmInvoiceUpdate = true}>Aggiorna fattura</Button>
+            {:else}
+                <Button size="sm" variant="secondary" onclick={() => confirmInvoice = true}>Genera fattura</Button>
+            {/if}
+            <StatusBadge status={sprint.status}/>
+        </div>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -119,13 +190,30 @@
                                 <div class="mb-1"><StatusBadge status={job.status}/></div>
                                 <div class="font-medium text-slate-100 truncate">{job.title}</div>
                             </div>
-                            {#if job.cost_usd}
-                                <div class="text-xs text-slate-500 tabular-nums shrink-0">${job.cost_usd.toFixed(2)}</div>
-                            {/if}
+                            <div class="flex items-center gap-3 shrink-0 text-xs tabular-nums">
+                                {#if job.estimate}
+                                    <span class="text-slate-300">{formatCurrency(job.estimate)}</span>
+                                {/if}
+                                {#if job.cost_usd}
+                                    <span class="text-slate-500">${job.cost_usd.toFixed(2)}</span>
+                                {/if}
+                            </div>
                         </button>
                     </li>
                 {/each}
             </ul>
         {/if}
     </Card>
+
+    <Modal open={confirmInvoice} title="Generare la fattura?" onclose={() => confirmInvoice = false}>
+        <p class="text-slate-300">
+            Verrà creata una fattura sul backoffice per <strong>{client?.name ?? 'il cliente'}</strong>
+            con forfait <strong>{formatCurrency(sprint.price)}</strong> (riga unica).
+            Numero e totali sono assegnati dal backoffice. L'azione è verso un servizio esterno.
+        </p>
+        {#snippet footer()}
+            <Button variant="ghost" onclick={() => confirmInvoice = false}>Annulla</Button>
+            <Button onclick={generateInvoice} loading={invoicing}>Genera fattura</Button>
+        {/snippet}
+    </Modal>
 {/if}

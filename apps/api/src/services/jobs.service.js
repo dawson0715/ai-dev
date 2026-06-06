@@ -7,6 +7,13 @@ const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN
 const CLICKUP_QUESTION_STATUS = process.env.CLICKUP_QUESTION_STATUS ?? 'pending'
 const CLICKUP_INPROGRESS_STATUS = process.env.CLICKUP_INPROGRESS_STATUS ?? 'in progress'
 
+// Stima (forfait) per job in EUR: input dell'utente, accumulato poi nel forfait sprint.
+function toEstimate(value) {
+    if (value === undefined || value === null || value === '') return 0
+    const n = Number(value)
+    return Number.isFinite(n) && n >= 0 ? n : 0
+}
+
 export function jobsService(db) {
     const jobs = jobsModel(db)
     const projects = projectsModel(db)
@@ -50,7 +57,7 @@ export function jobsService(db) {
             return {ok: true}
         },
 
-        async createManual(projectId, {title, description}) {
+        async createManual(projectId, {title, description, estimate}) {
             const project = await projects.findById(projectId)
             if (!project) throw notFound('project not found')
 
@@ -58,7 +65,8 @@ export function jobsService(db) {
             const res = await jobs.insertManual({
                 projectId,
                 title: cleanTitle,
-                description: (description ?? '').trim()
+                description: (description ?? '').trim(),
+                estimate: toEstimate(estimate)
             })
             return {ok: true, job_id: res.insertedId.toString()}
         },
@@ -91,7 +99,11 @@ export function jobsService(db) {
             return {job, project}
         },
 
-        update: (id, fields) => jobs.update(id, fields),
+        update: (id, fields) => {
+            const clean = {...fields}
+            if ('estimate' in clean) clean.estimate = toEstimate(clean.estimate)
+            return jobs.update(id, clean)
+        },
 
         async ask(jobId, {question_text, execution}) {
             const job = await jobs.findById(jobId)

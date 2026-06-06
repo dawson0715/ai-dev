@@ -27,13 +27,14 @@ export function jobsModel(db) {
             }
         },
 
-        insertManual({projectId, title, description}) {
+        insertManual({projectId, title, description, estimate = 0}) {
             return collection.insertOne({
                 project_id: projectId,
                 status: 'pending',
                 source: 'manual',
                 title,
                 description,
+                estimate,
                 created_at: new Date()
             })
         },

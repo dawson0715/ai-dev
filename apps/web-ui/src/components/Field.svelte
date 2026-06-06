@@ -7,7 +7,10 @@
         required = false,
         hint = '',
         multiline = false,
-        rows = 4
+        rows = 4,
+        oninput = undefined,
+        step = undefined,
+        min = undefined
     } = $props()
 
     const base = 'block w-full rounded-lg bg-slate-950/50 ring-1 ring-slate-800 px-3 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 transition'
@@ -19,9 +22,9 @@
         {#if required}<span class="text-rose-400">*</span>{/if}
     </span>
     {#if multiline}
-        <textarea bind:value {placeholder} {required} {rows} class={base}></textarea>
+        <textarea bind:value {placeholder} {required} {rows} {oninput} class={base}></textarea>
     {:else}
-        <input bind:value {type} {placeholder} {required} class={base}/>
+        <input bind:value {type} {placeholder} {required} {oninput} {step} {min} class={base}/>
     {/if}
     {#if hint}
         <span class="block text-xs text-slate-500 mt-1">{hint}</span>
