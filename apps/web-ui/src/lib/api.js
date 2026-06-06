@@ -47,5 +47,25 @@ export const api = {
         retry: (id) => request(`/jobs/${id}/retry`, {method: 'POST'}),
         update: (id, data) => request(`/jobs/${id}`, {method: 'PATCH', body: data}),
         fail: (id, body = {}) => request(`/jobs/${id}/fail`, {method: 'POST', body})
+    },
+
+    clients: {
+        list: () => request('/clients'),
+        get: (id) => request(`/clients/${id}`)
+    },
+
+    tasks: {
+        list: (params) => request('/tasks', {query: params}),
+        get: (id) => request(`/tasks/${id}`),
+        create: (data) => request('/tasks', {method: 'POST', body: data}),
+        update: (id, data) => request(`/tasks/${id}`, {method: 'PATCH', body: data}),
+        remove: (id) => request(`/tasks/${id}`, {method: 'DELETE'})
+    },
+
+    sprints: {
+        list: (params) => request('/sprints', {query: params}),
+        get: (id) => request(`/sprints/${id}`),
+        create: (data) => request('/sprints', {method: 'POST', body: data}),
+        public: (token) => request(`/public/sprints/${token}`)
     }
 }

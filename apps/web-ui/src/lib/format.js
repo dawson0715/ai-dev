@@ -28,10 +28,28 @@ export const statusColors = {
     running: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
     completed: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
     failed: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
-    awaiting_clarification: 'bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30'
+    awaiting_clarification: 'bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30',
+    // Stati task (vedi lib/taskStatus.js)
+    preventivo: 'bg-slate-600/30 text-slate-300 ring-slate-500/40',
+    approvato: 'bg-indigo-500/15 text-indigo-300 ring-indigo-500/30',
+    in_lavorazione: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
+    completato: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
 }
 
 export function statusLabel(s) {
     if (!s) return 'unknown'
     return s.replace(/_/g, ' ')
+}
+
+export function formatDateOnly(value) {
+    if (!value) return '—'
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: 'numeric'})
+}
+
+export function formatCurrency(value) {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return '—'
+    return n.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})
 }

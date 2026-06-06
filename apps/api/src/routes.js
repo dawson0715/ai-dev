@@ -1,18 +1,33 @@
 import {healthController} from './controllers/health.controller.js'
 import {projectsController} from './controllers/projects.controller.js'
 import {jobsController} from './controllers/jobs.controller.js'
+import {clientsController} from './controllers/clients.controller.js'
+import {tasksController} from './controllers/tasks.controller.js'
+import {sprintsController} from './controllers/sprints.controller.js'
 import {projectsService} from './services/projects.service.js'
 import {jobsService} from './services/jobs.service.js'
+import {clientsService} from './services/clients.service.js'
+import {tasksService} from './services/tasks.service.js'
+import {sprintsService} from './services/sprints.service.js'
 
 export async function registerRoutes(app, db) {
     const jobs = jobsService(db)
     const projects = projectsService(db)
+    const clients = clientsService(db)
+    const tasks = tasksService(db)
+    const sprints = sprintsService(db)
 
     await jobs.init()
+    await clients.init()
+    await tasks.init()
+    await sprints.init()
 
     const health = healthController()
     const projectsCtl = projectsController({projectsService: projects, jobsService: jobs})
     const jobsCtl = jobsController({jobsService: jobs})
+    const clientsCtl = clientsController({clientsService: clients})
+    const tasksCtl = tasksController({tasksService: tasks})
+    const sprintsCtl = sprintsController({sprintsService: sprints})
 
     app.get('/health', health.get)
 
@@ -33,4 +48,21 @@ export async function registerRoutes(app, db) {
     app.post('/jobs/:id/ask', jobsCtl.ask)
     app.post('/jobs/:id/complete', jobsCtl.complete)
     app.post('/jobs/:id/fail', jobsCtl.fail)
+
+    app.get('/clients', clientsCtl.list)
+    app.post('/clients/upsert', clientsCtl.upsert)
+    app.get('/clients/:id', clientsCtl.get)
+
+    app.get('/tasks', tasksCtl.list)
+    app.post('/tasks', tasksCtl.create)
+    app.get('/tasks/:id', tasksCtl.get)
+    app.patch('/tasks/:id', tasksCtl.update)
+    app.delete('/tasks/:id', tasksCtl.remove)
+
+    app.get('/sprints', sprintsCtl.list)
+    app.post('/sprints', sprintsCtl.create)
+    app.get('/sprints/:id', sprintsCtl.get)
+
+    // Endpoint pubblico (senza auth): vista cliente via token.
+    app.get('/public/sprints/:token', sprintsCtl.publicByToken)
 }

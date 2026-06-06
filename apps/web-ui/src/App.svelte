@@ -6,6 +6,10 @@
     import ProjectDetailView from './views/ProjectDetailView.svelte'
     import JobsView from './views/JobsView.svelte'
     import JobDetailView from './views/JobDetailView.svelte'
+    import TasksView from './views/TasksView.svelte'
+    import SprintsView from './views/SprintsView.svelte'
+    import SprintDetailView from './views/SprintDetailView.svelte'
+    import PublicSprintView from './views/PublicSprintView.svelte'
 
     let mobileMenuOpen = $state(false)
     let healthStatus = $state('checking')
@@ -25,7 +29,9 @@
 
     const nav = [
         {label: 'Progetti', path: '/projects', icon: 'folder'},
-        {label: 'Job', path: '/jobs', icon: 'list'}
+        {label: 'Job', path: '/jobs', icon: 'list'},
+        {label: 'Task', path: '/tasks', icon: 'check'},
+        {label: 'Sprint', path: '/sprints', icon: 'rocket'}
     ]
 
     function navigate(path) {
@@ -36,6 +42,9 @@
 
 <Toasts/>
 
+{#if route[0] === 'public' && route[1] === 'sprint'}
+<PublicSprintView token={route[2]}/>
+{:else}
 <div class="min-h-full flex flex-col lg:flex-row">
     <!-- Mobile topbar -->
     <header class="lg:hidden sticky top-0 z-30 bg-slate-950/90 backdrop-blur ring-1 ring-slate-800 px-4 py-3 flex items-center justify-between">
@@ -73,6 +82,10 @@
                     class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {isActive(item.path.slice(1)) ? 'bg-brand-600/20 text-brand-200 ring-1 ring-brand-500/30' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'}">
                     {#if item.icon === 'folder'}
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    {:else if item.icon === 'check'}
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>
+                    {:else if item.icon === 'rocket'}
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
                     {:else}
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
                     {/if}
@@ -101,6 +114,12 @@
                 <JobsView/>
             {:else if route[0] === 'jobs' && route.length >= 2}
                 <JobDetailView jobId={route[1]}/>
+            {:else if route[0] === 'tasks'}
+                <TasksView/>
+            {:else if route[0] === 'sprints' && route.length === 1}
+                <SprintsView/>
+            {:else if route[0] === 'sprints' && route.length >= 2}
+                <SprintDetailView sprintId={route[1]}/>
             {:else}
                 <div class="text-center py-20 text-slate-500">
                     <h2 class="text-2xl font-semibold text-slate-200">Pagina non trovata</h2>
@@ -110,3 +129,4 @@
         </div>
     </main>
 </div>
+{/if}
