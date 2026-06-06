@@ -216,4 +216,30 @@
             <Button onclick={generateInvoice} loading={invoicing}>Genera fattura</Button>
         {/snippet}
     </Modal>
+
+    <Modal open={editOpen} title="Modifica sprint" onclose={() => editOpen = false}>
+        <form onsubmit={saveEdit} class="space-y-4">
+            <Field label="Forfait (€)" type="number" step="0.01" min="0" bind:value={editForm.price} placeholder="0.00"/>
+            <Field label="Nota" bind:value={editForm.note} multiline rows={3} placeholder="Nota dello sprint (diventa la descrizione in fattura)"/>
+            {#if sprint.invoice_id}
+                <p class="text-xs text-amber-300/90">Lo sprint è già fatturato: dopo aver salvato, usa "Aggiorna fattura" per propagare le modifiche al backoffice.</p>
+            {/if}
+            <div class="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onclick={() => editOpen = false}>Annulla</Button>
+                <Button type="submit" loading={saving}>Salva</Button>
+            </div>
+        </form>
+    </Modal>
+
+    <Modal open={confirmInvoiceUpdate} title="Aggiornare la fattura?" onclose={() => confirmInvoiceUpdate = false}>
+        <p class="text-slate-300">
+            La fattura {sprint.invoice_number ? `n. ${sprint.invoice_number}${sprint.invoice_year ? `/${sprint.invoice_year}` : ''} ` : ''}sul backoffice
+            verrà ri-sincronizzata con il forfait attuale <strong>{formatCurrency(sprint.price)}</strong>.
+            Numero e data restano invariati; i totali vengono ricalcolati. L'azione è verso un servizio esterno.
+        </p>
+        {#snippet footer()}
+            <Button variant="ghost" onclick={() => confirmInvoiceUpdate = false}>Annulla</Button>
+            <Button onclick={syncInvoice} loading={updatingInvoice}>Aggiorna fattura</Button>
+        {/snippet}
+    </Modal>
 {/if}

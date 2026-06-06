@@ -27,6 +27,9 @@ export async function updateInvoice(id, payload) {
 // Chiamata POST all'API v1 Deplot, con gestione dell'involucro {data, status, error}.
 // status 1 = ok (ritorna `data`); status -1 = errore (HTTP 400, throw con error.message).
 async function apiCall(path, payload) {
+    if (!INVOICE_API_URL) {
+        throw httpError('INVOICE_API_URL non configurato', 500)
+    }
     if (!INVOICE_API_TOKEN) {
         throw httpError('INVOICE_API_TOKEN non configurato', 500)
     }
