@@ -7,6 +7,17 @@ export function jobsController({jobsService}) {
             return jobsService.findAll({limit})
         },
 
+        async billable(req, reply) {
+            const {client_id} = req.query ?? {}
+            if (!client_id) return reply.code(400).send({error: 'client_id is required'})
+            try {
+                return await jobsService.findBillable(client_id)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
         async get(req, reply) {
             const id = new ObjectId(req.params.id)
             const job = await jobsService.findById(id)

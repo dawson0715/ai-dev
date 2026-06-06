@@ -46,20 +46,14 @@ export const api = {
         create: (projectId, data) => request(`/projects/${projectId}/jobs`, {method: 'POST', body: data}),
         retry: (id) => request(`/jobs/${id}/retry`, {method: 'POST'}),
         update: (id, data) => request(`/jobs/${id}`, {method: 'PATCH', body: data}),
-        fail: (id, body = {}) => request(`/jobs/${id}/fail`, {method: 'POST', body})
+        fail: (id, body = {}) => request(`/jobs/${id}/fail`, {method: 'POST', body}),
+        // Job fatturabili (completati, non in sprint) di un cliente.
+        billable: (clientId) => request('/jobs/billable', {query: {client_id: clientId}})
     },
 
     clients: {
         list: () => request('/clients'),
         get: (id) => request(`/clients/${id}`)
-    },
-
-    tasks: {
-        list: (params) => request('/tasks', {query: params}),
-        get: (id) => request(`/tasks/${id}`),
-        create: (data) => request('/tasks', {method: 'POST', body: data}),
-        update: (id, data) => request(`/tasks/${id}`, {method: 'PATCH', body: data}),
-        remove: (id) => request(`/tasks/${id}`, {method: 'DELETE'})
     },
 
     sprints: {

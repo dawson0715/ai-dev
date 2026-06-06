@@ -1,3 +1,4 @@
+import {ObjectId} from 'mongodb'
 import {jobsModel} from '../models/jobs.model.js'
 import {projectsModel} from '../models/projects.model.js'
 import {listTodoTasks, postComment, setTaskStatus} from './clickup.service.js'
@@ -24,6 +25,23 @@ export function jobsService(db) {
         findByProject: (projectId) => jobs.findByProject(projectId),
 
         findById: (id) => jobs.findById(id),
+
+        // Job fatturabili di un cliente: completati e non ancora in uno sprint.
+        // Il cliente si ricava dai progetti (project.client_id), non dal job.
+        async findBillable(clientId) {
+            let cid
+            try {
+                cid = new ObjectId(clientId)
+            } catch {
+                const err = new Error('invalid client_id')
+                err.statusCode = 400
+                throw err
+            }
+            const clientProjects = await projects.findByClient(cid)
+            const projectIds = clientProjects.map((p) => p._id)
+            if (projectIds.length === 0) return []
+            return jobs.findBillable(projectIds)
+        },
 
         async retry(jobId) {
             const job = await jobs.findById(jobId)

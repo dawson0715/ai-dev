@@ -12,6 +12,8 @@
     let loading = $state(true)
     let error = $state('')
 
+    const totalBilled = $derived((data?.sprints ?? []).reduce((sum, s) => sum + (s.price ?? 0), 0))
+
     async function load() {
         loading = true
         error = ''
@@ -42,40 +44,39 @@
                 <h1 class="text-3xl font-bold tracking-tight text-slate-100 mt-1">{data.client?.name ?? ''}</h1>
             </header>
 
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">Task in corso</h2>
-            {#if !data.tasks?.length}
-                <Card class="mb-8"><EmptyState title="Nessun task in corso"/></Card>
+            {#if !data.sprints?.length}
+                <Card><EmptyState title="Nessuno sprint" description="Non ci sono ancora lavori da mostrare."/></Card>
             {:else}
-                <Card padding="none" class="mb-8">
-                    <ul class="divide-y divide-slate-800">
-                        {#each data.tasks as task (task._id)}
-                            <li class="px-4 sm:px-6 py-4 flex items-center gap-3">
-                                <div class="flex-1 min-w-0">
-                                    <div class="mb-1"><StatusBadge status={task.status}/></div>
-                                    <div class="font-medium text-slate-100 truncate">{task.project_name || '(senza nome)'}</div>
-                                    {#if task.description}
-                                        <div class="text-xs text-slate-500 mt-0.5 line-clamp-2">{task.description}</div>
-                                    {/if}
-                                    {#if task.delivery_date}
-                                        <div class="text-xs text-slate-500 mt-0.5">consegna {formatDateOnly(task.delivery_date)}</div>
+                <div class="space-y-5">
+                    {#each data.sprints as sprint (sprint._id)}
+                        <Card padding="none">
+                            <div class="px-4 sm:px-6 py-4 border-b border-slate-800 flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="mb-1.5"><StatusBadge status={sprint.status}/></div>
+                                    <div class="font-semibold text-slate-100">{sprint.note || 'Sprint'}</div>
+                                    {#if sprint.delivery_date}
+                                        <div class="text-xs text-slate-500 mt-0.5">consegna {formatDateOnly(sprint.delivery_date)}</div>
                                     {/if}
                                 </div>
-                                <div class="font-semibold text-slate-100 tabular-nums shrink-0">{formatCurrency(task.price)}</div>
-                            </li>
-                        {/each}
-                    </ul>
-                </Card>
-            {/if}
-
-            {#if data.sprints?.length}
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">Sprint</h2>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    {#each data.sprints as s (s._id)}
-                        <Card>
-                            <div class="text-xs text-slate-500">{s.note || 'Sprint'}</div>
-                            <div class="text-xl font-bold text-slate-100 tabular-nums mt-1">{formatCurrency(s.total)}</div>
+                                <div class="text-xl font-bold text-slate-100 tabular-nums shrink-0">{formatCurrency(sprint.price)}</div>
+                            </div>
+                            {#if sprint.jobs?.length}
+                                <ul class="divide-y divide-slate-800/60">
+                                    {#each sprint.jobs as job, i (i)}
+                                        <li class="px-4 sm:px-6 py-2.5 text-sm text-slate-300 flex items-center gap-2">
+                                            <svg class="text-slate-600 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
+                                            <span class="truncate">{job.title}</span>
+                                        </li>
+                                    {/each}
+                                </ul>
+                            {/if}
                         </Card>
                     {/each}
+                </div>
+
+                <div class="mt-6 flex items-center justify-between border-t border-slate-800 pt-4">
+                    <span class="text-sm text-slate-400">Totale</span>
+                    <span class="text-2xl font-bold text-slate-100 tabular-nums">{formatCurrency(totalBilled)}</span>
                 </div>
             {/if}
         {/if}

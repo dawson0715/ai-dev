@@ -5,7 +5,8 @@
         options = [],
         placeholder = '',
         required = false,
-        hint = ''
+        hint = '',
+        onchange = undefined
     } = $props()
 
     const base = 'block w-full rounded-lg bg-slate-950/50 ring-1 ring-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 transition'
@@ -18,7 +19,7 @@
             {#if required}<span class="text-rose-400">*</span>{/if}
         </span>
     {/if}
-    <select bind:value {required} class={base}>
+    <select bind:value {required} {onchange} class={base}>
         {#if placeholder}
             <option value="" disabled>{placeholder}</option>
         {/if}

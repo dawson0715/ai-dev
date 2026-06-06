@@ -7,25 +7,36 @@
     import Card from '../components/Card.svelte'
     import Modal from '../components/Modal.svelte'
     import Field from '../components/Field.svelte'
+    import Select from '../components/Select.svelte'
     import Spinner from '../components/Spinner.svelte'
     import EmptyState from '../components/EmptyState.svelte'
 
     let projects = $state([])
+    let clients = $state([])
     let loading = $state(true)
     let modalOpen = $state(false)
     let submitting = $state(false)
 
     let form = $state({
         name: '',
+        client_id: '',
         clickup_list_id: '',
         gitlab_url: '',
         gitlab_service_account: ''
     })
 
+    const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
+    const clientOptions = $derived([
+        {value: '', label: 'Nessun cliente'},
+        ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
+    ])
+
     async function load() {
         loading = true
         try {
-            projects = await api.projects.list()
+            const [ps, cs] = await Promise.all([api.projects.list(), api.clients.list()])
+            projects = ps
+            clients = cs
         } catch (e) {
             toast.error(`Errore caricamento progetti: ${e.message}`)
         } finally {
@@ -34,7 +45,7 @@
     }
 
     function resetForm() {
-        form = {name: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: ''}
+        form = {name: '', client_id: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: ''}
     }
 
     async function submit(e) {
@@ -93,7 +104,9 @@
                         <svg class="text-slate-500 group-hover:text-brand-300 transition" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
                     </div>
                     <h3 class="font-semibold text-slate-100 truncate">{p.name ?? '(senza nome)'}</h3>
-                    <p class="text-xs text-slate-500 mt-1 truncate">{p.gitlab?.url ?? '—'}</p>
+                    <p class="text-xs text-slate-500 mt-1 truncate">
+                        {p.client_id ? (clientName[p.client_id] ?? 'Cliente sconosciuto') : 'Nessun cliente'}
+                    </p>
                     <div class="mt-4 flex items-center justify-between text-xs">
                         <span class="text-slate-500">List <code class="text-slate-400">{p.clickup?.list_id ?? '—'}</code></span>
                         <span class="text-slate-500">{formatRelative(p.created_at)}</span>
@@ -107,6 +120,8 @@
 <Modal open={modalOpen} title="Nuovo progetto" onclose={() => modalOpen = false}>
     <form onsubmit={submit} class="space-y-4">
         <Field label="Nome" bind:value={form.name} required placeholder="Il mio progetto"/>
+        <Select label="Cliente" bind:value={form.client_id} options={clientOptions}
+                hint="Cliente a cui appartiene il progetto (per la fatturazione a sprint)."/>
         <Field label="ClickUp list ID" bind:value={form.clickup_list_id} required placeholder="901xxxxxxxx"
                hint="Identificatore della lista ClickUp da cui leggere i task."/>
         <Field label="GitLab repo URL" bind:value={form.gitlab_url} required placeholder="https://gitlab.com/org/repo.git"/>

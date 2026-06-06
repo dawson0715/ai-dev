@@ -10,29 +10,40 @@
     import EmptyState from '../components/EmptyState.svelte'
     import Modal from '../components/Modal.svelte'
     import Field from '../components/Field.svelte'
+    import Select from '../components/Select.svelte'
 
     let {projectId} = $props()
 
     let project = $state(null)
     let jobs = $state([])
+    let clients = $state([])
     let loading = $state(true)
     let syncing = $state(false)
     let editOpen = $state(false)
     let confirmDelete = $state(false)
-    let editForm = $state({name: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: '', gitlab_default_branch: ''})
+    let editForm = $state({name: '', client_id: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: '', gitlab_default_branch: ''})
     let saving = $state(false)
+
+    const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
+    const clientOptions = $derived([
+        {value: '', label: 'Nessun cliente'},
+        ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
+    ])
 
     async function load() {
         loading = true
         try {
-            const [p, j] = await Promise.all([
+            const [p, j, cs] = await Promise.all([
                 api.projects.get(projectId),
-                api.projects.jobs(projectId)
+                api.projects.jobs(projectId),
+                api.clients.list()
             ])
             project = p
             jobs = j
+            clients = cs
             editForm = {
                 name: p.name ?? '',
+                client_id: p.client_id ?? '',
                 clickup_list_id: p.clickup?.list_id ?? '',
                 gitlab_url: p.gitlab?.url ?? '',
                 gitlab_service_account: p.gitlab?.service_account ?? '',
@@ -111,6 +122,9 @@
     <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div class="min-w-0">
             <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 truncate">{project.name}</h1>
+            <p class="text-slate-400 text-sm mt-1 truncate">
+                {project.client_id ? (clientName[project.client_id] ?? 'Cliente sconosciuto') : 'Nessun cliente'}
+            </p>
         </div>
         <div class="flex flex-wrap gap-2">
             <Button variant="secondary" onclick={sync} loading={syncing} disabled={syncing}>
@@ -178,6 +192,8 @@
 <Modal open={editOpen} title="Modifica progetto" onclose={() => editOpen = false}>
     <form onsubmit={save} class="space-y-4">
         <Field label="Nome" bind:value={editForm.name}/>
+        <Select label="Cliente" bind:value={editForm.client_id} options={clientOptions}
+                hint="Cliente a cui appartiene il progetto (per la fatturazione a sprint)."/>
         <Field label="ClickUp list ID" bind:value={editForm.clickup_list_id}/>
         <Field label="GitLab URL" bind:value={editForm.gitlab_url}/>
         <Field label="GitLab service account" bind:value={editForm.gitlab_service_account} placeholder="nome-gruppo"

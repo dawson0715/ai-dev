@@ -6,7 +6,6 @@
     import ProjectDetailView from './views/ProjectDetailView.svelte'
     import JobsView from './views/JobsView.svelte'
     import JobDetailView from './views/JobDetailView.svelte'
-    import TasksView from './views/TasksView.svelte'
     import SprintsView from './views/SprintsView.svelte'
     import SprintDetailView from './views/SprintDetailView.svelte'
     import PublicSprintView from './views/PublicSprintView.svelte'
@@ -30,7 +29,6 @@
     const nav = [
         {label: 'Progetti', path: '/projects', icon: 'folder'},
         {label: 'Job', path: '/jobs', icon: 'list'},
-        {label: 'Task', path: '/tasks', icon: 'check'},
         {label: 'Sprint', path: '/sprints', icon: 'rocket'}
     ]
 
@@ -114,8 +112,6 @@
                 <JobsView/>
             {:else if route[0] === 'jobs' && route.length >= 2}
                 <JobDetailView jobId={route[1]}/>
-            {:else if route[0] === 'tasks'}
-                <TasksView/>
             {:else if route[0] === 'sprints' && route.length === 1}
                 <SprintsView/>
             {:else if route[0] === 'sprints' && route.length >= 2}

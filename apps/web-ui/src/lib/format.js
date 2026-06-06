@@ -29,7 +29,7 @@ export const statusColors = {
     completed: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
     failed: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
     awaiting_clarification: 'bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30',
-    // Stati task (vedi lib/taskStatus.js)
+    // Stati sprint (vedi lib/sprintStatus.js)
     preventivo: 'bg-slate-600/30 text-slate-300 ring-slate-500/40',
     approvato: 'bg-indigo-500/15 text-indigo-300 ring-indigo-500/30',
     in_lavorazione: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',

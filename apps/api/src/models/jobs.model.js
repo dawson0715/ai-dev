@@ -91,6 +91,43 @@ export function jobsModel(db) {
                 .toArray()
         },
 
+        findByIds(ids) {
+            return collection.find({_id: {$in: ids}}, {projection: {executions: 0}}).toArray()
+        },
+
+        findBySprint(sprintId) {
+            return collection
+                .find({sprint_id: sprintId}, {projection: {executions: 0}})
+                .sort({created_at: -1})
+                .toArray()
+        },
+
+        findBySprintIds(sprintIds) {
+            return collection
+                .find({sprint_id: {$in: sprintIds}}, {projection: {executions: 0}})
+                .sort({created_at: -1})
+                .toArray()
+        },
+
+        // Job fatturabili: completati, su un progetto del cliente, non ancora in uno sprint.
+        findBillable(projectIds) {
+            return collection
+                .find(
+                    {project_id: {$in: projectIds}, status: 'completed', sprint_id: {$exists: false}},
+                    {projection: {executions: 0}}
+                )
+                .sort({created_at: -1})
+                .toArray()
+        },
+
+        // Assegna un gruppo di job a uno sprint (in fase di creazione sprint).
+        assignToSprint(ids, sprintId) {
+            return collection.updateMany(
+                {_id: {$in: ids}},
+                {$set: {sprint_id: sprintId}}
+            )
+        },
+
         findAll({limit = 100} = {}) {
             return collection
                 .find({}, {projection: {executions: 0}})
