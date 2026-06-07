@@ -25,6 +25,13 @@ export function jobsModel(db) {
                     throw err
                 }
             }
+            // support.call_key: rende idempotente l'ingest delle chiamate di supporto
+            // (stessa chiamata inviata due volte non crea un job duplicato). Partial
+            // perche' solo i job di supporto hanno questo campo.
+            await collection.createIndex(
+                {'support.call_key': 1},
+                {unique: true, partialFilterExpression: {'support.call_key': {$exists: true}}}
+            )
         },
 
         insertManual({projectId, title, description, estimate = 0}) {
@@ -37,6 +44,30 @@ export function jobsModel(db) {
                 estimate,
                 created_at: new Date()
             })
+        },
+
+        // Job di supporto remoto da una chiamata. Nasce gia' 'completed' (la chiamata
+        // e' lavoro svolto) e billable; non e' legato a un progetto/repo ma direttamente
+        // al cliente (client_id). Idempotente su support.call_key.
+        insertSupport({clientId, number, duration, minutes, date, type, title, callKey}) {
+            return collection.updateOne(
+                {'support.call_key': callKey},
+                {
+                    $setOnInsert: {
+                        client_id: clientId,
+                        status: 'completed',
+                        source: 'support',
+                        title,
+                        minutes,
+                        estimate: 0,
+                        cost_usd: 0,
+                        support: {call_key: callKey, number, duration, date, type},
+                        created_at: new Date(),
+                        completed_at: new Date()
+                    }
+                },
+                {upsert: true}
+            )
         },
 
         upsertFromTask(projectId, listId, task) {
@@ -110,11 +141,17 @@ export function jobsModel(db) {
                 .toArray()
         },
 
-        // Job fatturabili: completati, su un progetto del cliente, non ancora in uno sprint.
-        findBillable(projectIds) {
+        // Job fatturabili: completati e non ancora in uno sprint. Include sia i job
+        // sui progetti del cliente sia i job di supporto remoto agganciati direttamente
+        // al cliente (che non hanno project_id).
+        findBillable({projectIds = [], clientId} = {}) {
+            const or = []
+            if (projectIds.length) or.push({project_id: {$in: projectIds}})
+            if (clientId) or.push({client_id: clientId, source: 'support'})
+            if (!or.length) return Promise.resolve([])
             return collection
                 .find(
-                    {project_id: {$in: projectIds}, status: 'completed', sprint_id: {$exists: false}},
+                    {status: 'completed', sprint_id: {$exists: false}, $or: or},
                     {projection: {executions: 0}}
                 )
                 .sort({created_at: -1})

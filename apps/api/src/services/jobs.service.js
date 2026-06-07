@@ -46,8 +46,7 @@ export function jobsService(db) {
             }
             const clientProjects = await projects.findByClient(cid)
             const projectIds = clientProjects.map((p) => p._id)
-            if (projectIds.length === 0) return []
-            return jobs.findBillable(projectIds)
+            return jobs.findBillable({projectIds, clientId: cid})
         },
 
         async retry(jobId) {

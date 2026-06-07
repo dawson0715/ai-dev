@@ -3,16 +3,19 @@ import {projectsController} from './controllers/projects.controller.js'
 import {jobsController} from './controllers/jobs.controller.js'
 import {clientsController} from './controllers/clients.controller.js'
 import {sprintsController} from './controllers/sprints.controller.js'
+import {supportController} from './controllers/support.controller.js'
 import {projectsService} from './services/projects.service.js'
 import {jobsService} from './services/jobs.service.js'
 import {clientsService} from './services/clients.service.js'
 import {sprintsService} from './services/sprints.service.js'
+import {supportService} from './services/support.service.js'
 
 export async function registerRoutes(app, db) {
     const jobs = jobsService(db)
     const projects = projectsService(db)
     const clients = clientsService(db)
     const sprints = sprintsService(db)
+    const support = supportService(db)
 
     await jobs.init()
     await clients.init()
@@ -23,6 +26,7 @@ export async function registerRoutes(app, db) {
     const jobsCtl = jobsController({jobsService: jobs})
     const clientsCtl = clientsController({clientsService: clients})
     const sprintsCtl = sprintsController({sprintsService: sprints})
+    const supportCtl = supportController({supportService: support})
 
     app.get('/health', health.get)
 
@@ -55,6 +59,10 @@ export async function registerRoutes(app, db) {
     app.patch('/sprints/:id', sprintsCtl.update)
     app.post('/sprints/:id/invoice', sprintsCtl.invoice)
     app.post('/sprints/:id/invoice/update', sprintsCtl.invoiceUpdate)
+
+    // Ingest chiamate di supporto: { calls: [{number, duration, date, type}] }.
+    // Crea un job di supporto remoto billable per ogni chiamata da numero registrato.
+    app.post('/support/calls', supportCtl.ingest)
 
     // Endpoint pubblico (senza auth): vista cliente via token.
     app.get('/public/sprints/:token', sprintsCtl.publicByToken)

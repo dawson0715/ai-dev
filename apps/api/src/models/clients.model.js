@@ -9,6 +9,9 @@ export function clientsModel(db) {
                 {token: 1},
                 {unique: true, partialFilterExpression: {token: {$exists: true}}}
             )
+            // numbers: numeri di telefono registrati al cliente (normalizzati), usati per
+            // associare le chiamate di supporto in ingresso al cliente giusto.
+            await collection.createIndex({numbers: 1})
         },
 
         upsertByExternalId(externalId, set, setOnInsert) {
@@ -29,6 +32,11 @@ export function clientsModel(db) {
 
         findByToken(token) {
             return collection.findOne({token})
+        },
+
+        // number deve essere gia' normalizzato (vedi clientsService.normalizeNumber).
+        findByNumber(number) {
+            return collection.findOne({numbers: number})
         }
     }
 }

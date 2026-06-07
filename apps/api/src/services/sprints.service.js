@@ -35,6 +35,8 @@ function jobView(job) {
         url: job.clickup?.url ?? null,
         estimate: job.estimate ?? 0,
         cost_usd: job.cost_usd ?? 0,
+        source: job.source ?? null,
+        minutes: job.minutes ?? 0,
         created_at: job.created_at
     }
 }
@@ -138,16 +140,19 @@ export function sprintsService(db) {
             const found = await jobs.findByIds(ids)
             if (found.length !== ids.length) throw badRequest('uno o piu job non esistono')
 
-            // Mappa progetto -> cliente, per validare l'appartenenza dei job.
-            const projectIds = [...new Set(found.map((j) => String(j.project_id)))].map((s) => new ObjectId(s))
+            // Mappa progetto -> cliente, per validare l'appartenenza dei job. I job di
+            // supporto non hanno project_id: portano il client_id direttamente.
+            const projectIds = [
+                ...new Set(found.filter((j) => j.project_id).map((j) => String(j.project_id)))
+            ].map((s) => new ObjectId(s))
             const projectDocs = await projects.findByIds(projectIds)
             const clientByProject = new Map(projectDocs.map((p) => [String(p._id), p.client_id]))
 
             for (const job of found) {
                 if (job.sprint_id) throw badRequest(`job ${job._id} gia assegnato a uno sprint`)
-                const owner = clientByProject.get(String(job.project_id))
+                const owner = job.project_id ? clientByProject.get(String(job.project_id)) : job.client_id
                 if (!owner || !owner.equals(clientObjId)) {
-                    throw badRequest(`job ${job._id} non appartiene a un progetto di questo cliente`)
+                    throw badRequest(`job ${job._id} non appartiene a questo cliente`)
                 }
             }
 
