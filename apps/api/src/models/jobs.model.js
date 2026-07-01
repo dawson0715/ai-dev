@@ -32,6 +32,12 @@ export function jobsModel(db) {
                 {'support.call_key': 1},
                 {unique: true, partialFilterExpression: {'support.call_key': {$exists: true}}}
             )
+            // gitlab_issue.issue_id: id globale issue GitLab, univoco sull'istanza.
+            // Partial perche' solo i job importati da GitLab issues hanno questo campo.
+            await collection.createIndex(
+                {'gitlab_issue.issue_id': 1},
+                {unique: true, partialFilterExpression: {'gitlab_issue.issue_id': {$exists: true}}}
+            )
         },
 
         insertManual({projectId, title, description, estimate = 0}) {
@@ -91,6 +97,28 @@ export function jobsModel(db) {
             )
         },
 
+        upsertFromGitlabIssue(projectId, issue) {
+            return collection.updateOne(
+                {'gitlab_issue.issue_id': issue.id},
+                {
+                    $setOnInsert: {
+                        project_id: projectId,
+                        status: 'pending',
+                        source: 'gitlab_issue',
+                        gitlab_issue: {
+                            issue_id: issue.id,
+                            iid: issue.iid,
+                            title: issue.title,
+                            description: issue.description ?? '',
+                            url: issue.web_url
+                        },
+                        created_at: new Date()
+                    }
+                },
+                {upsert: true}
+            )
+        },
+
         claimNext() {
             return collection.findOneAndUpdate(
                 {status: 'pending'},
@@ -104,6 +132,27 @@ export function jobsModel(db) {
 
         update(id, fields) {
             return collection.updateOne({_id: id}, {$set: fields})
+        },
+
+        // Aggiunge un commento libero al job e lo rimette in coda (retry con più
+        // contesto per l'agente), senza toccare il legame ClickUp.
+        pushComment(id, comment) {
+            return collection.updateOne(
+                {_id: id},
+                {$push: {comments: comment}, $set: {status: 'pending', started_at: null}}
+            )
+        },
+
+        // Modifica testo (titolo/descrizione) di un job nato da ClickUp: da questo
+        // punto diverge dalla card ClickUp e diventa un job manuale a tutti gli effetti.
+        detachAndUpdate(id, fields) {
+            return collection.updateOne(
+                {_id: id},
+                {
+                    $set: {...fields, source: 'manual', status: 'pending', started_at: null},
+                    $unset: {clickup: ''}
+                }
+            )
         },
 
         pushExecution(id, execution, setFields) {

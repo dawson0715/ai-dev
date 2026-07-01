@@ -48,39 +48,55 @@ export async function runClaude({cwd, prompt}) {
 }
 
 export function buildPrompt(job) {
-    // I job manuali (creati da web UI) non hanno una card ClickUp: titolo e
-    // descrizione vivono al top level. I job ClickUp li tengono sotto `clickup`.
-    const isClickup = Boolean(job.clickup?.task_id)
-    const title = job.title ?? job.clickup?.title ?? ''
-    const description = job.description ?? job.clickup?.description ?? ''
-    const taskId = job.clickup?.task_id ?? ''
-    const url = job.clickup?.url ?? ''
+    // I job manuali (creati da web UI) non hanno una card ClickUp/issue GitLab:
+    // titolo e descrizione vivono al top level. I job importati li tengono
+    // sotto `clickup` o `gitlab_issue` a seconda della sorgente.
+    const source = job.clickup?.task_id ? 'clickup' : job.gitlab_issue?.issue_id ? 'gitlab_issue' : 'manual'
+    const title = job.title ?? job.clickup?.title ?? job.gitlab_issue?.title ?? ''
+    const description = job.description ?? job.clickup?.description ?? job.gitlab_issue?.description ?? ''
+    const externalId = job.clickup?.task_id ?? job.gitlab_issue?.iid ?? ''
+    const url = job.clickup?.url ?? job.gitlab_issue?.url ?? ''
 
-    const header = isClickup
-        ? [
+    const headers = {
+        clickup: [
             `Stai lavorando su un task ClickUp.`,
             ``,
             `# Task`,
-            `ID: ${taskId}`,
+            `ID: ${externalId}`,
             `URL: ${url}`,
             `Titolo: ${title}`
-        ]
-        : [
+        ],
+        gitlab_issue: [
+            `Stai lavorando su una issue GitLab.`,
+            ``,
+            `# Task`,
+            `Issue: #${externalId}`,
+            `URL: ${url}`,
+            `Titolo: ${title}`
+        ],
+        manual: [
             `Stai lavorando su un task di sviluppo creato manualmente.`,
             ``,
             `# Task`,
             `Titolo: ${title}`
         ]
+    }
+    const header = headers[source]
 
-    const questionsDestination = isClickup
+    const questionsDestination = source === 'clickup'
         ? `Saranno postate come commento sul task ClickUp.`
         : `Saranno salvate nel log del job e visibili dalla web UI.`
+
+    const comments = job.comments?.length
+        ? [``, `## Commenti aggiuntivi`, ...job.comments.map(c => `- ${c.text}`)]
+        : []
 
     return [
         ...header,
         ``,
         `## Descrizione`,
         description || '(nessuna descrizione)',
+        ...comments,
         ``,
         `# Istruzioni`,
         `Hai due strade possibili, mutuamente esclusive:`,

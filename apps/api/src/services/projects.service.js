@@ -5,6 +5,12 @@ function normalizeBranch(value) {
     return (value ?? '').trim() || 'main'
 }
 
+const TASK_SOURCES = ['clickup', 'gitlab_issues', 'manual']
+
+function normalizeTaskSource(value) {
+    return TASK_SOURCES.includes(value) ? value : 'clickup'
+}
+
 // Converte una stringa in ObjectId; '' / null / undefined -> null (cliente non assegnato).
 function toClientId(value) {
     if (value === undefined || value === null || value === '') return null
@@ -21,10 +27,21 @@ export function projectsService(db) {
     const model = projectsModel(db)
 
     return {
-        async create({name, client_id, clickup_list_id, gitlab_url, gitlab_service_account, gitlab_default_branch}) {
+        async create({
+            name,
+            client_id,
+            service_name,
+            task_source,
+            clickup_list_id,
+            gitlab_url,
+            gitlab_service_account,
+            gitlab_default_branch
+        }) {
             const result = await model.insert({
                 name,
                 client_id: toClientId(client_id),
+                service_name: service_name || null,
+                task_source: normalizeTaskSource(task_source),
                 clickup: {list_id: clickup_list_id},
                 gitlab: {
                     url: gitlab_url,
@@ -44,6 +61,8 @@ export function projectsService(db) {
             const allowed = {}
             if (fields.name !== undefined) allowed.name = fields.name
             if (fields.client_id !== undefined) allowed.client_id = toClientId(fields.client_id)
+            if (fields.service_name !== undefined) allowed.service_name = fields.service_name || null
+            if (fields.task_source !== undefined) allowed.task_source = normalizeTaskSource(fields.task_source)
             if (fields.clickup_list_id !== undefined) {
                 allowed['clickup.list_id'] = fields.clickup_list_id
             }

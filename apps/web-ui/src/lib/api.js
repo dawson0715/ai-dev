@@ -47,6 +47,7 @@ export const api = {
         retry: (id) => request(`/jobs/${id}/retry`, {method: 'POST'}),
         update: (id, data) => request(`/jobs/${id}`, {method: 'PATCH', body: data}),
         fail: (id, body = {}) => request(`/jobs/${id}/fail`, {method: 'POST', body}),
+        addComment: (id, text) => request(`/jobs/${id}/comments`, {method: 'POST', body: {text}}),
         // Job fatturabili (completati, non in sprint) di un cliente.
         billable: (clientId) => request('/jobs/billable', {query: {client_id: clientId}})
     },

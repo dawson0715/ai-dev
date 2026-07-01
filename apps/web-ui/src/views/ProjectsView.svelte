@@ -10,6 +10,9 @@
     import Select from '../components/Select.svelte'
     import Spinner from '../components/Spinner.svelte'
     import EmptyState from '../components/EmptyState.svelte'
+    import {SERVICE_NAMES} from '../lib/serviceName.js'
+    import {TASK_SOURCES} from '../lib/taskSource.js'
+    import {sortByClientName} from '../lib/projectSort.js'
 
     let projects = $state([])
     let clients = $state([])
@@ -20,6 +23,8 @@
     let form = $state({
         name: '',
         client_id: '',
+        service_name: '',
+        task_source: 'clickup',
         clickup_list_id: '',
         gitlab_url: '',
         gitlab_service_account: ''
@@ -30,6 +35,7 @@
         {value: '', label: 'Nessun cliente'},
         ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
     ])
+    const sortedProjects = $derived(sortByClientName(projects, clientName))
 
     async function load() {
         loading = true
@@ -45,7 +51,15 @@
     }
 
     function resetForm() {
-        form = {name: '', client_id: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: ''}
+        form = {
+            name: '',
+            client_id: '',
+            service_name: '',
+            task_source: 'clickup',
+            clickup_list_id: '',
+            gitlab_url: '',
+            gitlab_service_account: ''
+        }
     }
 
     async function submit(e) {
@@ -92,7 +106,7 @@
     </Card>
 {:else}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {#each projects as p (p._id)}
+        {#each sortedProjects as p (p._id)}
             <button
                 onclick={() => go(`/projects/${p._id}`)}
                 class="text-left group">
@@ -108,7 +122,15 @@
                         {p.client_id ? (clientName[p.client_id] ?? 'Cliente sconosciuto') : 'Nessun cliente'}
                     </p>
                     <div class="mt-4 flex items-center justify-between text-xs">
-                        <span class="text-slate-500">List <code class="text-slate-400">{p.clickup?.list_id ?? '—'}</code></span>
+                        <span class="text-slate-500">
+                            {#if (p.task_source ?? 'clickup') === 'gitlab_issues'}
+                                GitLab Issues
+                            {:else if p.task_source === 'manual'}
+                                Solo manuale
+                            {:else}
+                                List <code class="text-slate-400">{p.clickup?.list_id ?? '—'}</code>
+                            {/if}
+                        </span>
                         <span class="text-slate-500">{formatRelative(p.created_at)}</span>
                     </div>
                 </Card>
@@ -122,8 +144,13 @@
         <Field label="Nome" bind:value={form.name} required placeholder="Il mio progetto"/>
         <Select label="Cliente" bind:value={form.client_id} options={clientOptions}
                 hint="Cliente a cui appartiene il progetto (per la fatturazione a sprint)."/>
-        <Field label="ClickUp list ID" bind:value={form.clickup_list_id} required placeholder="901xxxxxxxx"
-               hint="Identificatore della lista ClickUp da cui leggere i task."/>
+        <Select label="Servizio" bind:value={form.service_name} options={SERVICE_NAMES} placeholder="Seleziona un servizio"/>
+        <Select label="Origine task" bind:value={form.task_source} options={TASK_SOURCES}
+                hint="Da dove importare i task del progetto."/>
+        {#if form.task_source === 'clickup'}
+            <Field label="ClickUp list ID" bind:value={form.clickup_list_id} required placeholder="901xxxxxxxx"
+                   hint="Identificatore della lista ClickUp da cui leggere i task."/>
+        {/if}
         <Field label="GitLab repo URL" bind:value={form.gitlab_url} required placeholder="https://gitlab.com/org/repo.git"/>
         <Field label="GitLab service account" bind:value={form.gitlab_service_account} required placeholder="nome-gruppo"
                hint="Nome del service account (path del gruppo top-level). Il token vive nel worker in GITLAB_SERVICE_ACCOUNTS."/>

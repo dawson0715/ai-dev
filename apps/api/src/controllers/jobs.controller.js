@@ -43,9 +43,24 @@ export function jobsController({jobsService}) {
 
         async update(req, reply) {
             const id = new ObjectId(req.params.id)
-            const res = await jobsService.update(id, req.body ?? {})
-            if (res.matchedCount === 0) return reply.code(404).send({error: 'job not found'})
-            return {ok: true}
+            try {
+                const res = await jobsService.update(id, req.body ?? {})
+                if (res.matchedCount === 0) return reply.code(404).send({error: 'job not found'})
+                return {ok: true}
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
+        async addComment(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.addComment(id, req.body?.text)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
         },
 
         async ask(req, reply) {

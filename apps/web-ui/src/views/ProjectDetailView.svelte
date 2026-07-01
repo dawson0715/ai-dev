@@ -11,6 +11,9 @@
     import Modal from '../components/Modal.svelte'
     import Field from '../components/Field.svelte'
     import Select from '../components/Select.svelte'
+    import NewJobModal from '../components/NewJobModal.svelte'
+    import {SERVICE_NAMES} from '../lib/serviceName.js'
+    import {TASK_SOURCES} from '../lib/taskSource.js'
 
     let {projectId} = $props()
 
@@ -20,8 +23,18 @@
     let loading = $state(true)
     let syncing = $state(false)
     let editOpen = $state(false)
+    let jobModalOpen = $state(false)
     let confirmDelete = $state(false)
-    let editForm = $state({name: '', client_id: '', clickup_list_id: '', gitlab_url: '', gitlab_service_account: '', gitlab_default_branch: ''})
+    let editForm = $state({
+        name: '',
+        client_id: '',
+        service_name: '',
+        task_source: 'clickup',
+        clickup_list_id: '',
+        gitlab_url: '',
+        gitlab_service_account: '',
+        gitlab_default_branch: ''
+    })
     let saving = $state(false)
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
@@ -44,6 +57,8 @@
             editForm = {
                 name: p.name ?? '',
                 client_id: p.client_id ?? '',
+                service_name: p.service_name ?? '',
+                task_source: p.task_source ?? 'clickup',
                 clickup_list_id: p.clickup?.list_id ?? '',
                 gitlab_url: p.gitlab?.url ?? '',
                 gitlab_service_account: p.gitlab?.service_account ?? '',
@@ -127,9 +142,15 @@
             </p>
         </div>
         <div class="flex flex-wrap gap-2">
-            <Button variant="secondary" onclick={sync} loading={syncing} disabled={syncing}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
-                Sync ClickUp
+            {#if project.task_source !== 'manual'}
+                <Button variant="secondary" onclick={sync} loading={syncing} disabled={syncing}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
+                    {project.task_source === 'gitlab_issues' ? 'Sync GitLab issues' : 'Sync ClickUp'}
+                </Button>
+            {/if}
+            <Button variant="secondary" onclick={() => jobModalOpen = true}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Nuovo job
             </Button>
             <Button variant="ghost" onclick={() => editOpen = true}>Modifica</Button>
             <Button variant="danger" size="md" onclick={() => confirmDelete = true}>Elimina</Button>
@@ -154,9 +175,13 @@
         {#if jobs.length === 0}
             <EmptyState
                 title="Nessun job"
-                description="Premi 'Sync ClickUp' per importare i task in stato Todo della lista.">
+                description={project.task_source === 'manual'
+                    ? "Progetto manuale: crea un job con 'Nuovo job'."
+                    : "Premi 'Sync' per importare i task disponibili."}>
                 {#snippet action()}
-                    <Button onclick={sync} loading={syncing}>Sync ora</Button>
+                    {#if project.task_source !== 'manual'}
+                        <Button onclick={sync} loading={syncing}>Sync ora</Button>
+                    {/if}
                 {/snippet}
             </EmptyState>
         {:else}
@@ -194,7 +219,12 @@
         <Field label="Nome" bind:value={editForm.name}/>
         <Select label="Cliente" bind:value={editForm.client_id} options={clientOptions}
                 hint="Cliente a cui appartiene il progetto (per la fatturazione a sprint)."/>
-        <Field label="ClickUp list ID" bind:value={editForm.clickup_list_id}/>
+        <Select label="Servizio" bind:value={editForm.service_name} options={SERVICE_NAMES} placeholder="Seleziona un servizio"/>
+        <Select label="Origine task" bind:value={editForm.task_source} options={TASK_SOURCES}
+                hint="Da dove importare i task del progetto."/>
+        {#if editForm.task_source === 'clickup'}
+            <Field label="ClickUp list ID" bind:value={editForm.clickup_list_id}/>
+        {/if}
         <Field label="GitLab URL" bind:value={editForm.gitlab_url}/>
         <Field label="GitLab service account" bind:value={editForm.gitlab_service_account} placeholder="nome-gruppo"
                hint="Path del gruppo top-level. Il token vive nel worker in GITLAB_SERVICE_ACCOUNTS."/>
@@ -205,6 +235,9 @@
         </div>
     </form>
 </Modal>
+
+<NewJobModal open={jobModalOpen} projects={project ? [project] : []} projectId={projectId}
+             onclose={() => jobModalOpen = false} oncreated={load}/>
 
 <Modal open={confirmDelete} title="Eliminare il progetto?" onclose={() => confirmDelete = false}>
     <p class="text-slate-300">Il documento verrà rimosso da MongoDB. Il clone in <code>/opt/cache</code> e i job esistenti restano.</p>

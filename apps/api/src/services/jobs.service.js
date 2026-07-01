@@ -2,6 +2,7 @@ import {ObjectId} from 'mongodb'
 import {jobsModel} from '../models/jobs.model.js'
 import {projectsModel} from '../models/projects.model.js'
 import {listTodoTasks, postComment, setTaskStatus} from './clickup.service.js'
+import {listOpenIssues} from './gitlabIssues.service.js'
 
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN
 const CLICKUP_QUESTION_STATUS = process.env.CLICKUP_QUESTION_STATUS ?? 'pending'
@@ -71,10 +72,30 @@ export function jobsService(db) {
         },
 
         async syncProject(projectId) {
-            if (!CLICKUP_TOKEN) return {created: 0, warning: 'CLICKUP_TOKEN not set'}
-
             const project = await projects.findById(projectId)
             if (!project) throw notFound('project not found')
+
+            const source = project.task_source ?? (project.clickup?.list_id ? 'clickup' : 'manual')
+
+            if (source === 'manual') {
+                return {created: 0, warning: 'progetto manuale: nessun sync esterno'}
+            }
+
+            if (source === 'gitlab_issues') {
+                if (!project.gitlab?.url) return {created: 0, warning: 'project has no gitlab.url'}
+
+                const issues = await listOpenIssues(project)
+                let created = 0
+
+                for (const issue of issues) {
+                    const res = await jobs.upsertFromGitlabIssue(project._id, issue)
+                    if (res.upsertedCount > 0) created++
+                }
+
+                return {created}
+            }
+
+            if (!CLICKUP_TOKEN) return {created: 0, warning: 'CLICKUP_TOKEN not set'}
 
             const listId = project.clickup?.list_id
             if (!listId) return {created: 0, warning: 'project has no clickup list_id'}
@@ -98,10 +119,32 @@ export function jobsService(db) {
             return {job, project}
         },
 
-        update: (id, fields) => {
+        async update(id, fields) {
             const clean = {...fields}
             if ('estimate' in clean) clean.estimate = toEstimate(clean.estimate)
+
+            if ('title' in clean || 'description' in clean) {
+                const job = await jobs.findById(id)
+                if (!job) throw notFound('job not found')
+                if (job.clickup?.task_id) return jobs.detachAndUpdate(id, clean)
+            }
+
             return jobs.update(id, clean)
+        },
+
+        async addComment(jobId, text) {
+            const job = await jobs.findById(jobId)
+            if (!job) throw notFound('job not found')
+
+            const clean = (text ?? '').trim()
+            if (!clean) {
+                const err = new Error('text is required')
+                err.statusCode = 400
+                throw err
+            }
+
+            await jobs.pushComment(jobId, {text: clean, created_at: new Date()})
+            return {ok: true}
         },
 
         async ask(jobId, {question_text, execution}) {

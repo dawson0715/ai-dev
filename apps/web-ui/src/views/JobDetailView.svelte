@@ -17,12 +17,22 @@
     let confirmFail = $state(false)
     let estimateInput = $state('')
     let savingEstimate = $state(false)
+    let commentText = $state('')
+    let savingComment = $state(false)
+    let editingText = $state(false)
+    let editTitle = $state('')
+    let editDescription = $state('')
+    let savingText = $state(false)
 
     async function load() {
         loading = true
         try {
             job = await api.jobs.get(jobId)
             estimateInput = job?.estimate != null ? String(job.estimate) : ''
+            editTitle = job?.title ?? job?.clickup?.title ?? ''
+            editDescription = job?.description ?? job?.clickup?.description ?? ''
+            editingText = false
+            commentText = ''
         } catch (e) {
             toast.error(`Errore: ${e.message}`)
         } finally {
@@ -40,6 +50,33 @@
             toast.error(`Salvataggio stima fallito: ${e.message}`)
         } finally {
             savingEstimate = false
+        }
+    }
+
+    async function addComment() {
+        savingComment = true
+        try {
+            await api.jobs.addComment(jobId, commentText)
+            toast.success('Commento aggiunto, job rimesso in coda')
+            commentText = ''
+            await load()
+        } catch (e) {
+            toast.error(`Aggiunta commento fallita: ${e.message}`)
+        } finally {
+            savingComment = false
+        }
+    }
+
+    async function saveText() {
+        savingText = true
+        try {
+            await api.jobs.update(jobId, {title: editTitle, description: editDescription})
+            toast.success('Testo aggiornato, job rimesso in coda')
+            await load()
+        } catch (e) {
+            toast.error(`Salvataggio testo fallito: ${e.message}`)
+        } finally {
+            savingText = false
         }
     }
 
@@ -132,6 +169,45 @@
             <div class="mt-1 text-sm text-slate-200">{formatDate(job.completed_at)}</div>
         </Card>
     </div>
+
+    {#if job.status === 'awaiting_clarification'}
+        <Card class="mb-6">
+            <h2 class="font-semibold text-slate-100 mb-3">Il job ha delle domande</h2>
+
+            <div class="mb-4">
+                <Field label="Aggiungi un commento" bind:value={commentText} multiline rows={3}
+                       placeholder="Rispondi alle domande o dai altro contesto all'agente."
+                       hint="Il commento si aggiunge al prompt e il job torna in coda. Il legame con ClickUp resta invariato."/>
+                <div class="flex justify-end mt-2">
+                    <Button onclick={addComment} loading={savingComment} disabled={savingComment || !commentText.trim()}>
+                        Aggiungi commento e rimetti in coda
+                    </Button>
+                </div>
+            </div>
+
+            {#if !editingText}
+                <Button variant="ghost" onclick={() => editingText = true}>Modifica testo del task</Button>
+            {:else}
+                <div class="pt-3 border-t border-slate-800 space-y-3">
+                    <Field label="Titolo" bind:value={editTitle}/>
+                    <Field label="Descrizione" bind:value={editDescription} multiline rows={6}/>
+                    {#if job.clickup?.task_id}
+                        <p class="text-xs text-amber-300">Il job proviene da ClickUp: salvando diventa un job manuale, scollegato dalla card ClickUp.</p>
+                    {/if}
+                    <div class="flex justify-end gap-2">
+                        <Button variant="ghost" onclick={() => editingText = false}>Annulla</Button>
+                        <Button onclick={saveText} loading={savingText} disabled={savingText}>Salva e rimetti in coda</Button>
+                    </div>
+                </div>
+            {/if}
+        </Card>
+    {/if}
+
+    {#if job.status === 'completed' && !job.estimate}
+        <div class="mb-6 p-4 rounded-lg bg-amber-500/10 ring-1 ring-amber-500/30 text-sm text-amber-200">
+            Job completato senza stima. Impostane una prima che entri in uno sprint.
+        </div>
+    {/if}
 
     <Card class="mb-6">
         <h2 class="font-semibold text-slate-100 mb-1">Stima costo</h2>
