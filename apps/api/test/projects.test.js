@@ -27,6 +27,10 @@ function projectsDb(initialProject = null) {
         async updateOne(_filter, update) {
             for (const [path, value] of Object.entries(update.$set)) setPath(stored, path, value)
             return {matchedCount: stored ? 1 : 0}
+        },
+        async updateMany(_filter, update) {
+            if (stored && update.$unset?.service_name !== undefined) delete stored.service_name
+            return {modifiedCount: stored ? 1 : 0}
         }
     }
 
@@ -36,6 +40,20 @@ function projectsDb(initialProject = null) {
         stored: () => stored
     }
 }
+
+test('removes the legacy service_name field without changing the GitLab service account', async () => {
+    const fixture = projectsDb({
+        _id: new ObjectId(),
+        name: 'OddMonitor',
+        service_name: 'oddmonitor',
+        gitlab: {service_account: 'oddmonitor'}
+    })
+
+    await projectsService(fixture.db).init()
+
+    assert.equal(Object.hasOwn(fixture.stored(), 'service_name'), false)
+    assert.equal(fixture.stored().gitlab.service_account, 'oddmonitor')
+})
 
 test('creates a manual project without a ClickUp list', async () => {
     const fixture = projectsDb()

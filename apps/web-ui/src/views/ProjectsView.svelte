@@ -10,7 +10,7 @@
     import Select from '../components/Select.svelte'
     import Spinner from '../components/Spinner.svelte'
     import EmptyState from '../components/EmptyState.svelte'
-    import {SERVICE_NAMES} from '../lib/serviceName.js'
+    import {serviceLabel} from '../lib/serviceName.js'
     import {TASK_SOURCES} from '../lib/taskSource.js'
     import {sortByClientName} from '../lib/projectSort.js'
 
@@ -24,7 +24,6 @@
     let form = $state({
         name: '',
         client_id: '',
-        service_name: '',
         task_source: 'clickup',
         clickup_list_id: '',
         gitlab_url: '',
@@ -37,7 +36,7 @@
         ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
     ])
     const gitlabServiceAccountOptions = $derived(
-        gitlabServiceAccounts.map((name) => ({value: name, label: name}))
+        gitlabServiceAccounts.map((name) => ({value: name, label: serviceLabel(name)}))
     )
     const sortedProjects = $derived(sortByClientName(projects, clientName))
 
@@ -63,7 +62,6 @@
         form = {
             name: '',
             client_id: '',
-            service_name: '',
             task_source: 'clickup',
             clickup_list_id: '',
             gitlab_url: '',
@@ -153,7 +151,12 @@
         <Field label="Nome" bind:value={form.name} required placeholder="Il mio progetto"/>
         <Select label="Cliente" bind:value={form.client_id} options={clientOptions}
                 hint="Cliente a cui appartiene il progetto (per la fatturazione a sprint)."/>
-        <Select label="Servizio" bind:value={form.service_name} options={SERVICE_NAMES} placeholder="Seleziona un servizio"/>
+        <Select label="Servizio" bind:value={form.gitlab_service_account}
+                options={gitlabServiceAccountOptions} required
+                placeholder={gitlabServiceAccounts.length ? 'Seleziona un servizio' : 'Nessun servizio configurato'}
+                hint={gitlabServiceAccounts.length
+                    ? 'Il servizio identifica il service account GitLab configurato; le credenziali non vengono esposte.'
+                    : 'Configura GITLAB_SERVICE_ACCOUNTS nel servizio API per creare un progetto.'}/>
         <Select label="Origine task" bind:value={form.task_source} options={TASK_SOURCES}
                 hint="Da dove importare i task del progetto."/>
         {#if form.task_source === 'clickup'}
@@ -161,12 +164,6 @@
                    hint="Identificatore della lista ClickUp da cui leggere i task."/>
         {/if}
         <Field label="GitLab repo URL" bind:value={form.gitlab_url} required placeholder="https://gitlab.com/org/repo.git"/>
-        <Select label="GitLab service account" bind:value={form.gitlab_service_account}
-                options={gitlabServiceAccountOptions} required
-                placeholder={gitlabServiceAccounts.length ? 'Seleziona un service account' : 'Nessun service account configurato'}
-                hint={gitlabServiceAccounts.length
-                    ? 'Sono mostrati solo i nomi configurati in GITLAB_SERVICE_ACCOUNTS; le credenziali non vengono esposte.'
-                    : 'Configura GITLAB_SERVICE_ACCOUNTS nel servizio API per creare un progetto.'}/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => modalOpen = false}>Annulla</Button>
             <Button type="submit" loading={submitting} disabled={submitting || gitlabServiceAccounts.length === 0}>Crea</Button>

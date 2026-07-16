@@ -18,6 +18,7 @@ export async function registerRoutes(app, db) {
     const sprints = sprintsService(db)
     const support = supportService(db)
 
+    await projects.init()
     await jobs.init()
     await clients.init()
     await sprints.init()

@@ -38,10 +38,11 @@ export function projectsService(db) {
     const model = projectsModel(db)
 
     return {
+        init: () => model.removeLegacyServiceName(),
+
         async create({
             name,
             client_id,
-            service_name,
             task_source,
             clickup_list_id,
             gitlab_url,
@@ -52,7 +53,6 @@ export function projectsService(db) {
             const result = await model.insert({
                 name,
                 client_id: toClientId(client_id),
-                service_name: service_name || null,
                 task_source: normalizedTaskSource,
                 clickup: {list_id: normalizeClickupListId(normalizedTaskSource, clickup_list_id)},
                 gitlab: {
@@ -76,7 +76,6 @@ export function projectsService(db) {
             const allowed = {}
             if (fields.name !== undefined) allowed.name = fields.name
             if (fields.client_id !== undefined) allowed.client_id = toClientId(fields.client_id)
-            if (fields.service_name !== undefined) allowed.service_name = fields.service_name || null
             const taskSource = fields.task_source !== undefined
                 ? normalizeTaskSource(fields.task_source)
                 : (project.task_source ?? (project.clickup?.list_id ? 'clickup' : 'manual'))

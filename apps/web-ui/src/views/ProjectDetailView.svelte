@@ -12,7 +12,7 @@
     import Field from '../components/Field.svelte'
     import Select from '../components/Select.svelte'
     import NewJobModal from '../components/NewJobModal.svelte'
-    import {SERVICE_NAMES} from '../lib/serviceName.js'
+    import {serviceLabel} from '../lib/serviceName.js'
     import {TASK_SOURCES} from '../lib/taskSource.js'
 
     let {projectId} = $props()
@@ -29,7 +29,6 @@
     let editForm = $state({
         name: '',
         client_id: '',
-        service_name: '',
         task_source: 'clickup',
         clickup_list_id: '',
         gitlab_url: '',
@@ -44,7 +43,7 @@
         ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
     ])
     const gitlabServiceAccountOptions = $derived.by(() => {
-        const options = gitlabServiceAccounts.map((name) => ({value: name, label: name}))
+        const options = gitlabServiceAccounts.map((name) => ({value: name, label: serviceLabel(name)}))
         const current = editForm.gitlab_service_account
         if (current && !gitlabServiceAccounts.includes(current)) {
             options.push({value: current, label: `${current} (non configurato)`})
@@ -68,7 +67,6 @@
             editForm = {
                 name: p.name ?? '',
                 client_id: p.client_id ?? '',
-                service_name: p.service_name ?? '',
                 task_source: p.task_source ?? 'clickup',
                 clickup_list_id: p.clickup?.list_id ?? '',
                 gitlab_url: p.gitlab?.url ?? '',
@@ -230,17 +228,16 @@
         <Field label="Nome" bind:value={editForm.name}/>
         <Select label="Cliente" bind:value={editForm.client_id} options={clientOptions}
                 hint="Cliente a cui appartiene il progetto (per la fatturazione a sprint)."/>
-        <Select label="Servizio" bind:value={editForm.service_name} options={SERVICE_NAMES} placeholder="Seleziona un servizio"/>
+        <Select label="Servizio" bind:value={editForm.gitlab_service_account}
+                options={gitlabServiceAccountOptions} required
+                placeholder={gitlabServiceAccountOptions.length ? 'Seleziona un servizio' : 'Nessun servizio configurato'}
+                hint="Il servizio identifica il service account GitLab configurato; le credenziali non vengono esposte."/>
         <Select label="Origine task" bind:value={editForm.task_source} options={TASK_SOURCES}
                 hint="Da dove importare i task del progetto."/>
         {#if editForm.task_source === 'clickup'}
             <Field label="ClickUp list ID" bind:value={editForm.clickup_list_id}/>
         {/if}
         <Field label="GitLab URL" bind:value={editForm.gitlab_url}/>
-        <Select label="GitLab service account" bind:value={editForm.gitlab_service_account}
-                options={gitlabServiceAccountOptions} required
-                placeholder={gitlabServiceAccountOptions.length ? 'Seleziona un service account' : 'Nessun service account configurato'}
-                hint="Il menu espone solo i nomi configurati in GITLAB_SERVICE_ACCOUNTS, mai le credenziali."/>
         <Field label="Branch di default" bind:value={editForm.gitlab_default_branch} placeholder="main"/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => editOpen = false}>Annulla</Button>

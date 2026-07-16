@@ -2,6 +2,12 @@ export function projectsModel(db) {
     const collection = db.collection('projects')
 
     return {
+        removeLegacyServiceName() {
+            return collection.updateMany(
+                {service_name: {$exists: true}},
+                {$unset: {service_name: ''}}
+            )
+        },
         insert(doc) {
             return collection.insertOne(doc)
         },
