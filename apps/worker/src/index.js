@@ -3,6 +3,7 @@ import {apiClient} from './services/api.service.js'
 import {commitAll, createWorktree, ensureClone, pruneWorktrees, pushBranch, removeWorktree} from './services/git.service.js'
 import {buildPrompt, runClaude} from './services/agent.service.js'
 import {ensureMergeRequest, getMergeRequest} from './services/gitlab.service.js'
+import {pollProjectJobs} from './services/project-sync.service.js'
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 30000)
 const WORKER_CONCURRENCY = Math.max(1, Number.parseInt(process.env.WORKER_CONCURRENCY ?? '4', 10) || 1)
@@ -28,18 +29,6 @@ async function pruneAll() {
 }
 
 await pruneAll()
-
-async function pollAll(projects) {
-    for (const p of projects) {
-        try {
-            const {created, warning} = await api.syncProjectJobs(p._id)
-            if (warning) console.warn(`sync warning for project ${p._id}: ${warning}`)
-            if (created > 0) console.log(`ingested ${created} new task(s) for project ${p._id}`)
-        } catch (err) {
-            console.error(`sync failed for project ${p._id}:`, err.message)
-        }
-    }
-}
 
 async function reconcileMerges(projects) {
     const projectById = new Map(projects.map((project) => [String(project._id), project]))
@@ -245,7 +234,7 @@ async function processNextJob(executorId) {
         try {
             const projects = await api.listProjects()
             await reconcileMerges(projects)
-            await pollAll(projects)
+            await pollProjectJobs(projects, api)
         } catch (err) {
             console.error('poll error:', err)
         }
