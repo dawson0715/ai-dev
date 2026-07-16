@@ -4,19 +4,38 @@
 // duplicata perché api e worker sono pacchetti npm separati.
 let serviceAccountCreds
 
-function serviceAccountMap() {
-    if (serviceAccountCreds) return serviceAccountCreds
-    const raw = process.env.GITLAB_SERVICE_ACCOUNTS
-    if (!raw) {
-        serviceAccountCreds = {}
-        return serviceAccountCreds
-    }
+export function parseServiceAccountMap(raw) {
+    if (!raw) return {}
+
+    let parsed
     try {
-        serviceAccountCreds = JSON.parse(raw)
+        parsed = JSON.parse(raw)
     } catch (err) {
         throw new Error(`GITLAB_SERVICE_ACCOUNTS non è un JSON valido: ${err.message}`)
     }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('GITLAB_SERVICE_ACCOUNTS deve essere un oggetto JSON')
+    }
+    for (const [name, credentials] of Object.entries(parsed)) {
+        if (!name.trim() || typeof credentials !== 'string') {
+            throw new Error('GITLAB_SERVICE_ACCOUNTS deve contenere coppie nome/stringa')
+        }
+    }
+    return parsed
+}
+
+function serviceAccountMap() {
+    if (serviceAccountCreds) return serviceAccountCreds
+    serviceAccountCreds = parseServiceAccountMap(process.env.GITLAB_SERVICE_ACCOUNTS)
     return serviceAccountCreds
+}
+
+// Espone soltanto i nomi configurati, mai username/password o token.
+export function serviceAccountNames(accounts = serviceAccountMap()) {
+    return Object.keys(accounts).sort((a, b) =>
+        a.localeCompare(b, 'it', {sensitivity: 'base', numeric: true})
+    )
 }
 
 // Ritorna { username, password } per il service account. Il valore in mappa è "<user>:<password>";

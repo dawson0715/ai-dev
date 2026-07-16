@@ -54,7 +54,14 @@ export const api = {
 
     clients: {
         list: () => request('/clients'),
-        get: (id) => request(`/clients/${id}`)
+        get: (id) => request(`/clients/${id}`),
+        create: (data) => request('/clients', {method: 'POST', body: data}),
+        update: (id, data) => request(`/clients/${id}`, {method: 'PATCH', body: data}),
+        remove: (id) => request(`/clients/${id}`, {method: 'DELETE'})
+    },
+
+    gitlab: {
+        serviceAccounts: () => request('/gitlab/service-accounts')
     },
 
     sprints: {

@@ -24,9 +24,12 @@ export function apiClient() {
         listProjects: () => request('GET', '/projects'),
         syncProjectJobs: (projectId) => request('POST', `/projects/${projectId}/jobs/sync`),
         claimJob: () => request('POST', '/jobs/claim'),
+        listAwaitingMergeJobs: () => request('GET', '/jobs?status=awaiting_merge&limit=1000'),
         updateJob: (jobId, fields) => request('PATCH', `/jobs/${jobId}`, fields),
+        heartbeatJob: (jobId) => request('POST', `/jobs/${jobId}/heartbeat`),
         askQuestion: (jobId, payload) => request('POST', `/jobs/${jobId}/ask`, payload),
         completeJob: (jobId, payload) => request('POST', `/jobs/${jobId}/complete`, payload),
+        markJobMerged: (jobId, payload) => request('POST', `/jobs/${jobId}/merged`, payload),
         failJob: (jobId, payload) => request('POST', `/jobs/${jobId}/fail`, payload)
     }
 }

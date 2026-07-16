@@ -1,3 +1,7 @@
+import {ObjectId} from 'mongodb'
+
+const SUCCESSFUL_DEPENDENCY_STATUSES = ['merged', 'completed']
+
 export function jobsModel(db) {
     const collection = db.collection('jobs')
 
@@ -38,17 +42,33 @@ export function jobsModel(db) {
                 {'gitlab_issue.issue_id': 1},
                 {unique: true, partialFilterExpression: {'gitlab_issue.issue_id': {$exists: true}}}
             )
+            // Lo slot viene mantenuto sia durante l'esecuzione sia mentre la MR
+            // aspetta il merge. L'indice rende il vincolo atomico anche con più
+            // executor o più istanze del worker.
+            await collection.createIndex(
+                {project_id: 1},
+                {
+                    name: 'one_active_job_per_project',
+                    unique: true,
+                    partialFilterExpression: {project_slot: true}
+                }
+            )
+            await collection.createIndex({status: 1, created_at: 1})
         },
 
-        insertManual({projectId, title, description, estimate = 0}) {
+        insertManual({projectId, title, description, estimate = 0, dependsOnJobIds = []}) {
+            const _id = new ObjectId()
+            const createdAt = new Date()
             return collection.insertOne({
+                _id,
                 project_id: projectId,
                 status: 'pending',
                 source: 'manual',
                 title,
                 description,
                 estimate,
-                created_at: new Date()
+                depends_on_job_ids: dependsOnJobIds,
+                created_at: createdAt
             })
         },
 
@@ -77,6 +97,7 @@ export function jobsModel(db) {
         },
 
         upsertFromTask(projectId, listId, task) {
+            const createdAt = new Date()
             return collection.updateOne(
                 {'clickup.task_id': task.id},
                 {
@@ -90,7 +111,7 @@ export function jobsModel(db) {
                             description: task.description ?? task.text_content ?? '',
                             url: task.url
                         },
-                        created_at: new Date()
+                        created_at: createdAt
                     }
                 },
                 {upsert: true}
@@ -98,6 +119,7 @@ export function jobsModel(db) {
         },
 
         upsertFromGitlabIssue(projectId, issue) {
+            const createdAt = new Date()
             return collection.updateOne(
                 {'gitlab_issue.issue_id': issue.id},
                 {
@@ -112,18 +134,78 @@ export function jobsModel(db) {
                             description: issue.description ?? '',
                             url: issue.web_url
                         },
-                        created_at: new Date()
+                        created_at: createdAt
                     }
                 },
                 {upsert: true}
             )
         },
 
-        claimNext() {
+        // Un solo candidato FIFO per progetto: un job bloccato da una dipendenza
+        // impedisce ai job successivi dello stesso progetto di scavalcarlo.
+        findActiveProjectIds() {
+            return collection.distinct('project_id', {project_slot: true})
+        },
+
+        findClaimCandidates(limit = 100, activeProjectIds = []) {
+            return collection.aggregate([
+                {
+                    $match: {
+                        status: 'pending',
+                        project_id: {
+                            $exists: true,
+                            ...(activeProjectIds.length ? {$nin: activeProjectIds} : {})
+                        }
+                    }
+                },
+                {$sort: {created_at: 1, _id: 1}},
+                {$group: {_id: '$project_id', job: {$first: '$$ROOT'}}},
+                {$replaceRoot: {newRoot: '$job'}},
+                {$sort: {created_at: 1, _id: 1}},
+                {$limit: limit}
+            ]).toArray()
+        },
+
+        claimById(id, liquibaseId) {
             return collection.findOneAndUpdate(
-                {status: 'pending'},
-                {$set: {status: 'running', started_at: new Date()}}
+                {_id: id, status: 'pending'},
+                {
+                    $set: {
+                        status: 'running',
+                        project_slot: true,
+                        started_at: new Date(),
+                        heartbeat_at: new Date(),
+                        liquibase_id: liquibaseId
+                    }
+                },
+                {returnDocument: 'after'}
             )
+        },
+
+        findDependencies(ids) {
+            return collection
+                .find(
+                    {_id: {$in: ids}},
+                    {projection: {_id: 1, status: 1}}
+                )
+                .toArray()
+        },
+
+        async findLatestLiquibaseId(projectId) {
+            const job = await collection
+                .find(
+                    {project_id: projectId, liquibase_id: {$exists: true}},
+                    {projection: {liquibase_id: 1}}
+                )
+                .sort({liquibase_id: -1})
+                .limit(1)
+                .next()
+            return job?.liquibase_id ?? null
+        },
+
+        dependenciesAreSuccessful(dependencies, expectedCount) {
+            return dependencies.length === expectedCount
+                && dependencies.every((job) => SUCCESSFUL_DEPENDENCY_STATUSES.includes(job.status))
         },
 
         findById(id) {
@@ -139,7 +221,11 @@ export function jobsModel(db) {
         pushComment(id, comment) {
             return collection.updateOne(
                 {_id: id},
-                {$push: {comments: comment}, $set: {status: 'pending', started_at: null}}
+                {
+                    $push: {comments: comment},
+                    $set: {status: 'pending', started_at: null},
+                    $unset: {project_slot: '', heartbeat_at: ''}
+                }
             )
         },
 
@@ -150,17 +236,81 @@ export function jobsModel(db) {
                 {_id: id},
                 {
                     $set: {...fields, source: 'manual', status: 'pending', started_at: null},
-                    $unset: {clickup: ''}
+                    $unset: {clickup: '', project_slot: '', heartbeat_at: ''}
                 }
             )
         },
 
-        pushExecution(id, execution, setFields) {
+        pushExecution(id, execution, setFields, {
+            releaseProject = false,
+            expectedStatuses = null,
+            requireProjectSlot = false
+        } = {}) {
+            const update = {
+                $push: {executions: execution},
+                $set: setFields
+            }
+            if (releaseProject) update.$unset = {project_slot: '', heartbeat_at: ''}
+
+            const filter = {_id: id}
+            if (expectedStatuses) filter.status = {$in: expectedStatuses}
+            if (requireProjectSlot) filter.project_slot = true
+
+            return collection.updateOne(
+                filter,
+                update
+            )
+        },
+
+        requeue(id) {
             return collection.updateOne(
                 {_id: id},
                 {
-                    $push: {executions: execution},
-                    $set: setFields
+                    $set: {status: 'pending', started_at: null},
+                    $unset: {project_slot: '', heartbeat_at: '', completed_at: ''}
+                }
+            )
+        },
+
+        markMerged(id, gitlab) {
+            return collection.findOneAndUpdate(
+                {_id: id, status: 'awaiting_merge'},
+                {
+                    $set: {
+                        status: 'merged',
+                        completed_at: new Date(),
+                        ...(gitlab ? {gitlab} : {})
+                    },
+                    $unset: {project_slot: '', heartbeat_at: ''}
+                },
+                {returnDocument: 'after'}
+            )
+        },
+
+        heartbeat(id) {
+            return collection.updateOne(
+                {_id: id, status: 'running', project_slot: true},
+                {$set: {heartbeat_at: new Date()}}
+            )
+        },
+
+        recoverStaleRunning(cutoff) {
+            return collection.updateMany(
+                {
+                    status: 'running',
+                    project_slot: true,
+                    $or: [
+                        {heartbeat_at: {$lt: cutoff}},
+                        {heartbeat_at: {$exists: false}, started_at: {$lt: cutoff}}
+                    ]
+                },
+                {
+                    $set: {
+                        status: 'pending',
+                        started_at: null,
+                        recovered_at: new Date()
+                    },
+                    $unset: {project_slot: '', heartbeat_at: ''}
                 }
             )
         },
@@ -200,7 +350,7 @@ export function jobsModel(db) {
             if (!or.length) return Promise.resolve([])
             return collection
                 .find(
-                    {status: 'completed', sprint_id: {$exists: false}, $or: or},
+                    {status: {$in: ['completed', 'merged']}, sprint_id: {$exists: false}, $or: or},
                     {projection: {executions: 0}}
                 )
                 .sort({created_at: -1})
@@ -215,9 +365,9 @@ export function jobsModel(db) {
             )
         },
 
-        findAll({limit = 100} = {}) {
+        findAll({limit = 100, status} = {}) {
             return collection
-                .find({}, {projection: {executions: 0}})
+                .find(status ? {status} : {}, {projection: {executions: 0}})
                 .sort({created_at: -1})
                 .limit(limit)
                 .toArray()

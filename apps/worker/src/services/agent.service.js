@@ -47,6 +47,39 @@ export async function runClaude({cwd, prompt}) {
     })
 }
 
+function pad(value) {
+    return String(value).padStart(2, '0')
+}
+
+function compactUtcTimestamp(value) {
+    const date = value ? new Date(value) : new Date()
+    return [
+        String(date.getUTCFullYear()).slice(-2),
+        pad(date.getUTCMonth() + 1),
+        pad(date.getUTCDate()),
+        pad(date.getUTCHours()),
+        pad(date.getUTCMinutes()),
+        pad(date.getUTCSeconds())
+    ].join('')
+}
+
+function normalizeTaskId(value) {
+    return String(value ?? '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'TASK'
+}
+
+export function liquibaseIdForJob(job) {
+    if (job.liquibase_id) return job.liquibase_id
+
+    const taskId = job.clickup?.task_id
+        ?? (job.gitlab_issue?.iid ? `GL-${job.gitlab_issue.iid}` : null)
+        ?? `JOB-${job._id}`
+    return `${compactUtcTimestamp(job.created_at)}_${normalizeTaskId(taskId)}`
+}
+
 export function buildPrompt(job) {
     // I job manuali (creati da web UI) non hanno una card ClickUp/issue GitLab:
     // titolo e descrizione vivono al top level. I job importati li tengono
@@ -90,6 +123,7 @@ export function buildPrompt(job) {
     const comments = job.comments?.length
         ? [``, `## Commenti aggiuntivi`, ...job.comments.map(c => `- ${c.text}`)]
         : []
+    const liquibaseId = liquibaseIdForJob(job)
 
     return [
         ...header,
@@ -99,6 +133,14 @@ export function buildPrompt(job) {
         ...comments,
         ``,
         `# Istruzioni`,
+        `## Migrazioni Liquibase`,
+        `Se il task richiede una nuova migrazione, usa l'identificativo assegnato`,
+        `\`${liquibaseId}\` come prefisso immutabile. Per esempio:`,
+        `\`${liquibaseId}_descrizione_breve.sql\` e changeset`,
+        `\`--changeset ai-worker:${liquibaseId}\`. Non aggiungere millisecondi, non`,
+        `rigenerare il timestamp e non modificare changeset già applicati. Mantieni il`,
+        `formato Liquibase già usato dal progetto se non è SQL formatted.`,
+        ``,
         `Hai due strade possibili, mutuamente esclusive:`,
         ``,
         `1. IMPLEMENTAZIONE: se il task è chiaro, modifica i file necessari nel repo corrente.`,

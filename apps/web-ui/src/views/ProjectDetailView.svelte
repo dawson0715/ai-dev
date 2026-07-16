@@ -20,6 +20,7 @@
     let project = $state(null)
     let jobs = $state([])
     let clients = $state([])
+    let gitlabServiceAccounts = $state([])
     let loading = $state(true)
     let syncing = $state(false)
     let editOpen = $state(false)
@@ -42,18 +43,28 @@
         {value: '', label: 'Nessun cliente'},
         ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
     ])
+    const gitlabServiceAccountOptions = $derived.by(() => {
+        const options = gitlabServiceAccounts.map((name) => ({value: name, label: name}))
+        const current = editForm.gitlab_service_account
+        if (current && !gitlabServiceAccounts.includes(current)) {
+            options.push({value: current, label: `${current} (non configurato)`})
+        }
+        return options
+    })
 
     async function load() {
         loading = true
         try {
-            const [p, j, cs] = await Promise.all([
+            const [p, j, cs, gitlabConfig] = await Promise.all([
                 api.projects.get(projectId),
                 api.projects.jobs(projectId),
-                api.clients.list()
+                api.clients.list(),
+                api.gitlab.serviceAccounts()
             ])
             project = p
             jobs = j
             clients = cs
+            gitlabServiceAccounts = gitlabConfig.service_accounts ?? []
             editForm = {
                 name: p.name ?? '',
                 client_id: p.client_id ?? '',
@@ -116,7 +127,7 @@
     })
 
     const counts = $derived.by(() => {
-        const acc = {pending: 0, running: 0, completed: 0, failed: 0, awaiting_clarification: 0}
+        const acc = {pending: 0, running: 0, awaiting_merge: 0, merged: 0, completed: 0, failed: 0, awaiting_clarification: 0}
         for (const j of jobs) {
             if (acc[j.status] !== undefined) acc[j.status]++
         }
@@ -157,8 +168,8 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {#each [['Pending', counts.pending, 'amber'], ['Running', counts.running, 'sky'], ['Completed', counts.completed, 'emerald'], ['Failed', counts.failed, 'rose']] as [label, n, color]}
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+        {#each [['Pending', counts.pending, 'amber'], ['Running', counts.running, 'sky'], ['Attesa merge', counts.awaiting_merge, 'indigo'], ['Merged', counts.merged + counts.completed, 'emerald'], ['Failed', counts.failed, 'rose']] as [label, n, color]}
             <Card padding="sm">
                 <div class="text-xs uppercase tracking-wider text-slate-500">{label}</div>
                 <div class="text-2xl font-bold mt-1 text-{color}-300">{n}</div>
@@ -226,8 +237,10 @@
             <Field label="ClickUp list ID" bind:value={editForm.clickup_list_id}/>
         {/if}
         <Field label="GitLab URL" bind:value={editForm.gitlab_url}/>
-        <Field label="GitLab service account" bind:value={editForm.gitlab_service_account} placeholder="nome-gruppo"
-               hint="Path del gruppo top-level. Il token vive nel worker in GITLAB_SERVICE_ACCOUNTS."/>
+        <Select label="GitLab service account" bind:value={editForm.gitlab_service_account}
+                options={gitlabServiceAccountOptions} required
+                placeholder={gitlabServiceAccountOptions.length ? 'Seleziona un service account' : 'Nessun service account configurato'}
+                hint="Il menu espone solo i nomi configurati in GITLAB_SERVICE_ACCOUNTS, mai le credenziali."/>
         <Field label="Branch di default" bind:value={editForm.gitlab_default_branch} placeholder="main"/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => editOpen = false}>Annulla</Button>

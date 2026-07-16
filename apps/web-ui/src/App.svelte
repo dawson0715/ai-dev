@@ -2,6 +2,7 @@
     import {router, matchRoute, go} from './lib/router.svelte.js'
     import {api} from './lib/api.js'
     import Toasts from './components/Toasts.svelte'
+    import ClientsView from './views/ClientsView.svelte'
     import ProjectsView from './views/ProjectsView.svelte'
     import ProjectDetailView from './views/ProjectDetailView.svelte'
     import JobsView from './views/JobsView.svelte'
@@ -27,6 +28,7 @@
     }
 
     const nav = [
+        {label: 'Clienti', path: '/clients', icon: 'users'},
         {label: 'Progetti', path: '/projects', icon: 'folder'},
         {label: 'Job', path: '/jobs', icon: 'list'},
         {label: 'Sprint', path: '/sprints', icon: 'rocket'}
@@ -80,6 +82,8 @@
                     class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {isActive(item.path.slice(1)) ? 'bg-brand-600/20 text-brand-200 ring-1 ring-brand-500/30' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'}">
                     {#if item.icon === 'folder'}
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    {:else if item.icon === 'users'}
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     {:else if item.icon === 'check'}
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>
                     {:else if item.icon === 'rocket'}
@@ -104,7 +108,9 @@
     <!-- Main -->
     <main class="flex-1 min-w-0">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-            {#if route.length === 0 || (route[0] === 'projects' && route.length === 1)}
+            {#if route[0] === 'clients' && route.length === 1}
+                <ClientsView/>
+            {:else if route.length === 0 || (route[0] === 'projects' && route.length === 1)}
                 <ProjectsView/>
             {:else if route[0] === 'projects' && route.length >= 2}
                 <ProjectDetailView projectId={route[1]}/>

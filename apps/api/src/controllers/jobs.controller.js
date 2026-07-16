@@ -4,7 +4,8 @@ export function jobsController({jobsService}) {
     return {
         async list(req, reply) {
             const limit = req.query?.limit ? Number(req.query.limit) : 100
-            return jobsService.findAll({limit})
+            const status = req.query?.status || undefined
+            return jobsService.findAll({limit, status})
         },
 
         async billable(req, reply) {
@@ -77,6 +78,26 @@ export function jobsController({jobsService}) {
             const id = new ObjectId(req.params.id)
             try {
                 return await jobsService.complete(id, req.body ?? {})
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
+        async heartbeat(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.heartbeat(id)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
+        async merged(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.markMerged(id, req.body ?? {})
             } catch (err) {
                 if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
                 throw err

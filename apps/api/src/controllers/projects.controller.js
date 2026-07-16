@@ -38,7 +38,7 @@ export function projectsController({projectsService, jobsService}) {
         },
 
         async createJob(req, reply) {
-            const {title, description, estimate} = req.body ?? {}
+            const {title, description, estimate, depends_on_job_ids} = req.body ?? {}
             if (!title && !description) {
                 return reply.code(400).send({error: 'title or description is required'})
             }
@@ -51,7 +51,12 @@ export function projectsController({projectsService, jobsService}) {
             }
 
             try {
-                return await jobsService.createManual(projectId, {title, description, estimate})
+                return await jobsService.createManual(projectId, {
+                    title,
+                    description,
+                    estimate,
+                    depends_on_job_ids
+                })
             } catch (err) {
                 if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
                 throw err

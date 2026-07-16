@@ -16,6 +16,7 @@
 
     let projects = $state([])
     let clients = $state([])
+    let gitlabServiceAccounts = $state([])
     let loading = $state(true)
     let modalOpen = $state(false)
     let submitting = $state(false)
@@ -35,14 +36,22 @@
         {value: '', label: 'Nessun cliente'},
         ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
     ])
+    const gitlabServiceAccountOptions = $derived(
+        gitlabServiceAccounts.map((name) => ({value: name, label: name}))
+    )
     const sortedProjects = $derived(sortByClientName(projects, clientName))
 
     async function load() {
         loading = true
         try {
-            const [ps, cs] = await Promise.all([api.projects.list(), api.clients.list()])
+            const [ps, cs, gitlabConfig] = await Promise.all([
+                api.projects.list(),
+                api.clients.list(),
+                api.gitlab.serviceAccounts()
+            ])
             projects = ps
             clients = cs
+            gitlabServiceAccounts = gitlabConfig.service_accounts ?? []
         } catch (e) {
             toast.error(`Errore caricamento progetti: ${e.message}`)
         } finally {
@@ -84,7 +93,7 @@
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
     <div>
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100">Progetti</h1>
-        <p class="text-slate-400 text-sm mt-1">Mappa una lista ClickUp a un repo GitLab.</p>
+        <p class="text-slate-400 text-sm mt-1">Collega un repo GitLab a task ClickUp, issue GitLab o job manuali.</p>
     </div>
     <Button onclick={() => modalOpen = true}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
@@ -98,7 +107,7 @@
     <Card>
         <EmptyState
             title="Nessun progetto"
-            description="Crea il primo progetto per iniziare a importare task da ClickUp.">
+            description="Crea il primo progetto e scegli se importare task o gestirli manualmente.">
             {#snippet action()}
                 <Button onclick={() => modalOpen = true}>Crea progetto</Button>
             {/snippet}
@@ -152,11 +161,15 @@
                    hint="Identificatore della lista ClickUp da cui leggere i task."/>
         {/if}
         <Field label="GitLab repo URL" bind:value={form.gitlab_url} required placeholder="https://gitlab.com/org/repo.git"/>
-        <Field label="GitLab service account" bind:value={form.gitlab_service_account} required placeholder="nome-gruppo"
-               hint="Nome del service account (path del gruppo top-level). Il token vive nel worker in GITLAB_SERVICE_ACCOUNTS."/>
+        <Select label="GitLab service account" bind:value={form.gitlab_service_account}
+                options={gitlabServiceAccountOptions} required
+                placeholder={gitlabServiceAccounts.length ? 'Seleziona un service account' : 'Nessun service account configurato'}
+                hint={gitlabServiceAccounts.length
+                    ? 'Sono mostrati solo i nomi configurati in GITLAB_SERVICE_ACCOUNTS; le credenziali non vengono esposte.'
+                    : 'Configura GITLAB_SERVICE_ACCOUNTS nel servizio API per creare un progetto.'}/>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => modalOpen = false}>Annulla</Button>
-            <Button type="submit" loading={submitting} disabled={submitting}>Crea</Button>
+            <Button type="submit" loading={submitting} disabled={submitting || gitlabServiceAccounts.length === 0}>Crea</Button>
         </div>
     </form>
 </Modal>

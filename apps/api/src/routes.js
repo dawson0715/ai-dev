@@ -4,6 +4,7 @@ import {jobsController} from './controllers/jobs.controller.js'
 import {clientsController} from './controllers/clients.controller.js'
 import {sprintsController} from './controllers/sprints.controller.js'
 import {supportController} from './controllers/support.controller.js'
+import {gitlabController} from './controllers/gitlab.controller.js'
 import {projectsService} from './services/projects.service.js'
 import {jobsService} from './services/jobs.service.js'
 import {clientsService} from './services/clients.service.js'
@@ -27,6 +28,7 @@ export async function registerRoutes(app, db) {
     const clientsCtl = clientsController({clientsService: clients})
     const sprintsCtl = sprintsController({sprintsService: sprints})
     const supportCtl = supportController({supportService: support})
+    const gitlabCtl = gitlabController()
 
     app.get('/health', health.get)
 
@@ -39,6 +41,8 @@ export async function registerRoutes(app, db) {
     app.post('/projects/:id/jobs', projectsCtl.createJob)
     app.post('/projects/:id/jobs/sync', projectsCtl.syncJobs)
 
+    app.get('/gitlab/service-accounts', gitlabCtl.listServiceAccounts)
+
     app.get('/jobs', jobsCtl.list)
     app.get('/jobs/billable', jobsCtl.billable)
     app.get('/jobs/:id', jobsCtl.get)
@@ -48,11 +52,16 @@ export async function registerRoutes(app, db) {
     app.post('/jobs/:id/retry', jobsCtl.retry)
     app.post('/jobs/:id/ask', jobsCtl.ask)
     app.post('/jobs/:id/complete', jobsCtl.complete)
+    app.post('/jobs/:id/heartbeat', jobsCtl.heartbeat)
+    app.post('/jobs/:id/merged', jobsCtl.merged)
     app.post('/jobs/:id/fail', jobsCtl.fail)
 
     app.get('/clients', clientsCtl.list)
+    app.post('/clients', clientsCtl.create)
     app.post('/clients/upsert', clientsCtl.upsert)
     app.get('/clients/:id', clientsCtl.get)
+    app.patch('/clients/:id', clientsCtl.update)
+    app.delete('/clients/:id', clientsCtl.remove)
 
     app.get('/sprints', sprintsCtl.list)
     app.post('/sprints', sprintsCtl.create)

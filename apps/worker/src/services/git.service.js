@@ -32,7 +32,7 @@ function serviceAccountMap() {
 
 // Ritorna { username, password } per il service account. Il valore in mappa è "<user>:<password>";
 // se manca il ":" l'intero valore è trattato come token con username "oauth2" (compat).
-function credentialsForServiceAccount(serviceAccount) {
+export function credentialsForServiceAccount(serviceAccount) {
     if (!serviceAccount) {
         throw new Error('Progetto senza gitlab.service_account: impossibile autenticare GitLab')
     }

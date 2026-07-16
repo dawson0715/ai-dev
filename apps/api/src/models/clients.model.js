@@ -22,6 +22,10 @@ export function clientsModel(db) {
             )
         },
 
+        insert(doc) {
+            return collection.insertOne(doc)
+        },
+
         findAll() {
             return collection.find({}).sort({name: 1}).toArray()
         },
@@ -37,6 +41,18 @@ export function clientsModel(db) {
         // number deve essere gia' normalizzato (vedi clientsService.normalizeNumber).
         findByNumber(number) {
             return collection.findOne({numbers: number})
+        },
+
+        updateById(id, fields) {
+            return collection.findOneAndUpdate(
+                {_id: id},
+                {$set: fields},
+                {returnDocument: 'after'}
+            )
+        },
+
+        deleteById(id) {
+            return collection.deleteOne({_id: id})
         }
     }
 }

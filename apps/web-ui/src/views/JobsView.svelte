@@ -41,14 +41,19 @@
     }
 
     const filtered = $derived(
-        filter === 'all' ? jobs : jobs.filter(j => j.status === filter)
+        filter === 'all'
+            ? jobs
+            : jobs.filter(j => filter === 'merged'
+                ? ['merged', 'completed'].includes(j.status)
+                : j.status === filter)
     )
 
     const filters = [
         {key: 'all', label: 'Tutti'},
         {key: 'pending', label: 'Pending'},
         {key: 'running', label: 'Running'},
-        {key: 'completed', label: 'Completati'},
+        {key: 'awaiting_merge', label: 'In attesa merge'},
+        {key: 'merged', label: 'Merged'},
         {key: 'failed', label: 'Falliti'},
         {key: 'awaiting_clarification', label: 'In attesa'}
     ]
@@ -97,7 +102,7 @@
                                 {:else}
                                     <span class="text-xs text-slate-400 px-1.5 py-0.5 rounded ring-1 ring-inset ring-slate-700">manuale</span>
                                 {/if}
-                                {#if job.status === 'completed' && !job.estimate}
+                                {#if ['completed', 'merged'].includes(job.status) && !job.estimate}
                                     <span class="text-xs text-amber-300 px-1.5 py-0.5 rounded ring-1 ring-inset ring-amber-500/30">senza stima</span>
                                 {/if}
                             </div>

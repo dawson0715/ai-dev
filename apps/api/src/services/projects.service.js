@@ -11,6 +11,17 @@ function normalizeTaskSource(value) {
     return TASK_SOURCES.includes(value) ? value : 'clickup'
 }
 
+function normalizeClickupListId(taskSource, value) {
+    if (taskSource !== 'clickup') return null
+
+    const listId = String(value ?? '').trim()
+    if (listId) return listId
+
+    const err = new Error('clickup_list_id is required for ClickUp projects')
+    err.statusCode = 400
+    throw err
+}
+
 // Converte una stringa in ObjectId; '' / null / undefined -> null (cliente non assegnato).
 function toClientId(value) {
     if (value === undefined || value === null || value === '') return null
@@ -37,12 +48,13 @@ export function projectsService(db) {
             gitlab_service_account,
             gitlab_default_branch
         }) {
+            const normalizedTaskSource = normalizeTaskSource(task_source)
             const result = await model.insert({
                 name,
                 client_id: toClientId(client_id),
                 service_name: service_name || null,
-                task_source: normalizeTaskSource(task_source),
-                clickup: {list_id: clickup_list_id},
+                task_source: normalizedTaskSource,
+                clickup: {list_id: normalizeClickupListId(normalizedTaskSource, clickup_list_id)},
                 gitlab: {
                     url: gitlab_url,
                     service_account: gitlab_service_account,
@@ -58,13 +70,22 @@ export function projectsService(db) {
         findById: (id) => model.findById(id),
 
         async update(id, fields) {
+            const project = await model.findById(id)
+            if (!project) return null
+
             const allowed = {}
             if (fields.name !== undefined) allowed.name = fields.name
             if (fields.client_id !== undefined) allowed.client_id = toClientId(fields.client_id)
             if (fields.service_name !== undefined) allowed.service_name = fields.service_name || null
-            if (fields.task_source !== undefined) allowed.task_source = normalizeTaskSource(fields.task_source)
-            if (fields.clickup_list_id !== undefined) {
-                allowed['clickup.list_id'] = fields.clickup_list_id
+            const taskSource = fields.task_source !== undefined
+                ? normalizeTaskSource(fields.task_source)
+                : (project.task_source ?? (project.clickup?.list_id ? 'clickup' : 'manual'))
+            if (fields.task_source !== undefined) allowed.task_source = taskSource
+            if (fields.task_source !== undefined || fields.clickup_list_id !== undefined) {
+                const listId = fields.clickup_list_id !== undefined
+                    ? fields.clickup_list_id
+                    : project.clickup?.list_id
+                allowed['clickup.list_id'] = normalizeClickupListId(taskSource, listId)
             }
             if (fields.gitlab_url !== undefined) allowed['gitlab.url'] = fields.gitlab_url
             if (fields.gitlab_service_account !== undefined) {

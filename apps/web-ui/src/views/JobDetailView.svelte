@@ -145,10 +145,10 @@
             {/if}
         </div>
         <div class="flex flex-wrap gap-2">
-            <Button variant="secondary" onclick={retry} loading={actionLoading} disabled={actionLoading || job.status === 'pending' || job.status === 'running'}>
+            <Button variant="secondary" onclick={retry} loading={actionLoading} disabled={actionLoading || ['pending', 'running', 'completed', 'merged'].includes(job.status)}>
                 Retry
             </Button>
-            <Button variant="danger" onclick={() => confirmFail = true} disabled={job.status === 'failed' || job.status === 'completed'}>
+            <Button variant="danger" onclick={() => confirmFail = true} disabled={['running', 'failed', 'completed', 'merged'].includes(job.status)}>
                 Marca failed
             </Button>
         </div>
@@ -165,8 +165,8 @@
             <div class="mt-1 text-sm text-slate-200">{formatDate(job.started_at)}</div>
         </Card>
         <Card padding="sm">
-            <div class="text-xs uppercase tracking-wider text-slate-500">Completato</div>
-            <div class="mt-1 text-sm text-slate-200">{formatDate(job.completed_at)}</div>
+            <div class="text-xs uppercase tracking-wider text-slate-500">Implementato</div>
+            <div class="mt-1 text-sm text-slate-200">{formatDate(job.implemented_at ?? job.completed_at)}</div>
         </Card>
     </div>
 
@@ -203,7 +203,13 @@
         </Card>
     {/if}
 
-    {#if job.status === 'completed' && !job.estimate}
+    {#if job.status === 'awaiting_merge'}
+        <div class="mb-6 p-4 rounded-lg bg-indigo-500/10 ring-1 ring-indigo-500/30 text-sm text-indigo-200">
+            Implementazione pronta: il progetto rimane occupato finché la Merge Request non viene unita nel branch base.
+        </div>
+    {/if}
+
+    {#if ['completed', 'merged'].includes(job.status) && !job.estimate}
         <div class="mb-6 p-4 rounded-lg bg-amber-500/10 ring-1 ring-amber-500/30 text-sm text-amber-200">
             Job completato senza stima. Impostane una prima che entri in uno sprint.
         </div>

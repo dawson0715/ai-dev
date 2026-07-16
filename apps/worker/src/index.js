@@ -2,13 +2,16 @@ import path from 'path'
 import {apiClient} from './services/api.service.js'
 import {commitAll, createWorktree, ensureClone, pruneWorktrees, pushBranch, removeWorktree} from './services/git.service.js'
 import {buildPrompt, runClaude} from './services/agent.service.js'
+import {ensureMergeRequest, getMergeRequest} from './services/gitlab.service.js'
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 30000)
+const WORKER_CONCURRENCY = Math.max(1, Number.parseInt(process.env.WORKER_CONCURRENCY ?? '4', 10) || 1)
+const JOB_HEARTBEAT_MS = Math.max(5000, Number.parseInt(process.env.JOB_HEARTBEAT_MS ?? '30000', 10) || 30000)
 const WORKSPACE = process.env.WORKSPACE ?? ''
 
 const api = apiClient()
 
-console.log('worker started')
+console.log(`worker started (concurrency: ${WORKER_CONCURRENCY}, max per project: 1)`)
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -26,9 +29,7 @@ async function pruneAll() {
 
 await pruneAll()
 
-async function pollAll() {
-    const projects = await api.listProjects()
-
+async function pollAll(projects) {
     for (const p of projects) {
         try {
             const {created, warning} = await api.syncProjectJobs(p._id)
@@ -40,14 +41,48 @@ async function pollAll() {
     }
 }
 
-async function processNextJob() {
+async function reconcileMerges(projects) {
+    const projectById = new Map(projects.map((project) => [String(project._id), project]))
+    const jobs = await api.listAwaitingMergeJobs()
+
+    for (const job of jobs) {
+        const project = projectById.get(String(job.project_id))
+        if (!project || !job.gitlab?.branch) continue
+
+        const targetBranch = project.gitlab?.default_branch?.trim() || 'main'
+        try {
+            const mergeRequest = job.gitlab.mr_iid
+                ? await getMergeRequest(project, job.gitlab.mr_iid)
+                : await ensureMergeRequest({
+                    project,
+                    sourceBranch: job.gitlab.branch,
+                    targetBranch,
+                    title: job.title ?? job.clickup?.title ?? job.gitlab_issue?.title ?? `Job ${job._id}`,
+                    expectedCommitSha: job.gitlab.commit_sha
+                })
+
+            const gitlab = {...job.gitlab, ...mergeRequest}
+            if (mergeRequest.mr_state === 'merged'
+                && (!mergeRequest.head_sha || mergeRequest.head_sha === job.gitlab.commit_sha)) {
+                await api.markJobMerged(job._id, {gitlab})
+                console.log(`job ${job._id}: merge rilevato, slot progetto rilasciato`)
+            } else if (!job.gitlab.mr_iid && mergeRequest.mr_iid) {
+                await api.updateJob(job._id, {gitlab})
+            }
+        } catch (err) {
+            console.error(`merge check failed for job ${job._id}:`, err.message)
+        }
+    }
+}
+
+async function processNextJob(executorId) {
     const claimed = await api.claimJob()
 
     if (!claimed) return false
 
     const {job, project} = claimed
 
-    console.log('processing job', job._id, job.clickup?.task_id ?? 'manual')
+    console.log(`executor ${executorId}: processing job`, job._id, job.clickup?.task_id ?? 'manual')
 
     const logs = []
     const log = msg => {
@@ -72,19 +107,26 @@ async function processNextJob() {
         return true
     }
 
-    const repoPath = await ensureClone(project, WORKSPACE)
-
-    const taskId = job.clickup?.task_id ?? job._id
+    const taskId = job.clickup?.task_id ?? (job.gitlab_issue?.iid ? `gl-${job.gitlab_issue.iid}` : job._id)
     const branch = `feature/${taskId}`
     const baseBranch = project.gitlab?.default_branch?.trim() || 'main'
     const worktreePath = path.join(WORKSPACE, 'worktrees', job._id)
     const prompt = buildPrompt(job)
+    const heartbeatTimer = setInterval(() => {
+        api.heartbeatJob(job._id).catch((err) => {
+            console.error(`heartbeat failed for job ${job._id}:`, err.message)
+        })
+    }, JOB_HEARTBEAT_MS)
 
+    let repoPath = null
+    let worktreeCreated = false
     let stdout = ''
     let stderr = ''
 
     try {
+        repoPath = await ensureClone(project, WORKSPACE)
         await createWorktree(repoPath, worktreePath, branch, baseBranch)
+        worktreeCreated = true
         log(`worktree pronto su ${branch} (base ${baseBranch})`)
 
         const claudeResult = await runClaude({cwd: worktreePath, prompt})
@@ -119,6 +161,22 @@ async function processNextJob() {
             log(`commit ${commitSha}`)
             await pushBranch(worktreePath, branch)
             log(`branch ${branch} pushato`)
+
+            let mergeRequest = null
+            try {
+                mergeRequest = await ensureMergeRequest({
+                    project,
+                    sourceBranch: branch,
+                    targetBranch: baseBranch,
+                    title: commitMessage,
+                    expectedCommitSha: commitSha
+                })
+                log(`merge request ${mergeRequest.mr_url} (${mergeRequest.mr_state})`)
+            } catch (err) {
+                // Il branch resta in awaiting_merge. Il poller ritenterà la creazione
+                // o rileverà una MR aperta manualmente senza sbloccare il progetto.
+                log(`merge request non disponibile: ${err.message}`)
+            }
             const completedAt = new Date()
 
             await api.completeJob(job._id, {
@@ -136,8 +194,19 @@ async function processNextJob() {
                     commit_sha: commitSha,
                     pushed: true
                 },
-                gitlab: {branch, commit_sha: commitSha, pushed: true}
+                gitlab: {
+                    branch,
+                    commit_sha: commitSha,
+                    pushed: true,
+                    ...mergeRequest
+                }
             })
+
+            if (mergeRequest?.mr_state === 'merged') {
+                await api.markJobMerged(job._id, {
+                    gitlab: {branch, commit_sha: commitSha, pushed: true, ...mergeRequest}
+                })
+            }
         }
     } catch (err) {
         console.error(`job ${job._id} failed:`, err.message)
@@ -158,10 +227,13 @@ async function processNextJob() {
             }
         })
     } finally {
-        try {
-            await removeWorktree(repoPath, worktreePath)
-        } catch (err) {
-            console.error(`worktree cleanup failed for job ${job._id}:`, err.message)
+        clearInterval(heartbeatTimer)
+        if (repoPath && worktreeCreated) {
+            try {
+                await removeWorktree(repoPath, worktreePath)
+            } catch (err) {
+                console.error(`worktree cleanup failed for job ${job._id}:`, err.message)
+            }
         }
     }
 
@@ -171,7 +243,9 @@ async function processNextJob() {
 ;(async function pollerLoop() {
     while (true) {
         try {
-            await pollAll()
+            const projects = await api.listProjects()
+            await reconcileMerges(projects)
+            await pollAll(projects)
         } catch (err) {
             console.error('poll error:', err)
         }
@@ -179,14 +253,18 @@ async function processNextJob() {
     }
 })()
 
-;(async function executorLoop() {
+async function executorLoop(executorId) {
     while (true) {
         try {
-            const processed = await processNextJob()
+            const processed = await processNextJob(executorId)
             if (!processed) await sleep(5000)
         } catch (err) {
             console.error('executor error:', err)
             await sleep(5000)
         }
     }
-})()
+}
+
+for (let executorId = 1; executorId <= WORKER_CONCURRENCY; executorId++) {
+    executorLoop(executorId)
+}

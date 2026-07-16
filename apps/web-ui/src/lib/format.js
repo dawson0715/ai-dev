@@ -26,6 +26,8 @@ export function formatRelative(value) {
 export const statusColors = {
     pending: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
     running: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
+    awaiting_merge: 'bg-indigo-500/15 text-indigo-300 ring-indigo-500/30',
+    merged: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
     completed: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
     failed: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
     awaiting_clarification: 'bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30',
