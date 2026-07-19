@@ -10,8 +10,11 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
-# git per simple-git (clone/worktree/push); ca-certificates per HTTPS verso GitLab/Anthropic
-RUN apk add --no-cache git ca-certificates
+# git per simple-git (clone/worktree/push); ca-certificates per HTTPS verso GitLab/Anthropic;
+# bash perché il tool Bash di Claude Code richiede una shell POSIX risolvibile via $SHELL
+# (Alpine ha solo /bin/sh di busybox, che Claude Code non riconosce come shell valida)
+RUN apk add --no-cache git ca-certificates bash
+ENV SHELL=/bin/bash
 
 # Claude Code CLI: il worker spawna `claude` come subprocess (vedi services/agent.service.js)
 RUN --mount=type=cache,target=/root/.npm \
