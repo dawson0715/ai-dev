@@ -54,6 +54,8 @@ export async function registerRoutes(app, db) {
     app.post('/jobs/:id/ask', jobsCtl.ask)
     app.post('/jobs/:id/complete', jobsCtl.complete)
     app.post('/jobs/:id/heartbeat', jobsCtl.heartbeat)
+    app.post('/jobs/:id/merge', jobsCtl.requestMerge)
+    app.post('/jobs/:id/manual-review', jobsCtl.requestManualReview)
     app.post('/jobs/:id/merged', jobsCtl.merged)
     app.post('/jobs/:id/fail', jobsCtl.fail)
 

@@ -2,7 +2,7 @@ import path from 'path'
 import {apiClient} from './services/api.service.js'
 import {commitAll, createWorktree, ensureClone, pruneWorktrees, pushBranch, removeWorktree} from './services/git.service.js'
 import {buildPrompt, runClaude} from './services/agent.service.js'
-import {ensureMergeRequest, getMergeRequest} from './services/gitlab.service.js'
+import {ensureMergeRequest, getMergeRequest, mergeMergeRequest} from './services/gitlab.service.js'
 import {pollProjectJobs} from './services/project-sync.service.js'
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 30000)
@@ -40,7 +40,7 @@ async function reconcileMerges(projects) {
 
         const targetBranch = project.gitlab?.default_branch?.trim() || 'main'
         try {
-            const mergeRequest = job.gitlab.mr_iid
+            let mergeRequest = job.gitlab.mr_iid
                 ? await getMergeRequest(project, job.gitlab.mr_iid)
                 : await ensureMergeRequest({
                     project,
@@ -49,6 +49,11 @@ async function reconcileMerges(projects) {
                     title: job.title ?? job.clickup?.title ?? job.gitlab_issue?.title ?? `Job ${job._id}`,
                     expectedCommitSha: job.gitlab.commit_sha
                 })
+
+            if (job.merge_requested_at && mergeRequest.mr_iid && mergeRequest.mr_state === 'opened') {
+                mergeRequest = await mergeMergeRequest(project, mergeRequest.mr_iid)
+                console.log(`job ${job._id}: merge eseguito su richiesta manuale`)
+            }
 
             const gitlab = {...job.gitlab, ...mergeRequest}
             if (mergeRequest.mr_state === 'merged'
@@ -97,8 +102,11 @@ async function processNextJob(executorId) {
     }
 
     const taskId = job.clickup?.task_id ?? (job.gitlab_issue?.iid ? `gl-${job.gitlab_issue.iid}` : job._id)
-    const branch = `feature/${taskId}`
     const baseBranch = project.gitlab?.default_branch?.trim() || 'main'
+    // Progetti con gitlab.direct_branch=true lavorano direttamente sul branch di
+    // default: nessun feature branch, nessuna merge request, push diretto.
+    const directBranch = project.gitlab?.direct_branch === true
+    const branch = directBranch ? baseBranch : `feature/${taskId}`
     const worktreePath = path.join(WORKSPACE, 'worktrees', job._id)
     const prompt = buildPrompt(job)
     const heartbeatTimer = setInterval(() => {
@@ -152,19 +160,23 @@ async function processNextJob(executorId) {
             log(`branch ${branch} pushato`)
 
             let mergeRequest = null
-            try {
-                mergeRequest = await ensureMergeRequest({
-                    project,
-                    sourceBranch: branch,
-                    targetBranch: baseBranch,
-                    title: commitMessage,
-                    expectedCommitSha: commitSha
-                })
-                log(`merge request ${mergeRequest.mr_url} (${mergeRequest.mr_state})`)
-            } catch (err) {
-                // Il branch resta in awaiting_merge. Il poller ritenterà la creazione
-                // o rileverà una MR aperta manualmente senza sbloccare il progetto.
-                log(`merge request non disponibile: ${err.message}`)
+            if (!directBranch) {
+                try {
+                    mergeRequest = await ensureMergeRequest({
+                        project,
+                        sourceBranch: branch,
+                        targetBranch: baseBranch,
+                        title: commitMessage,
+                        expectedCommitSha: commitSha
+                    })
+                    log(`merge request ${mergeRequest.mr_url} (${mergeRequest.mr_state})`)
+                } catch (err) {
+                    // Il branch resta in awaiting_merge. Il poller ritenterà la creazione
+                    // o rileverà una MR aperta manualmente senza sbloccare il progetto.
+                    log(`merge request non disponibile: ${err.message}`)
+                }
+            } else {
+                log(`push diretto su ${branch}, nessuna merge request`)
             }
             const completedAt = new Date()
 
@@ -191,7 +203,12 @@ async function processNextJob(executorId) {
                 }
             })
 
-            if (mergeRequest?.mr_state === 'merged') {
+            if (directBranch) {
+                await api.markJobMerged(job._id, {
+                    gitlab: {branch, commit_sha: commitSha, pushed: true}
+                })
+                log('job segnato come merged (push diretto)')
+            } else if (mergeRequest?.mr_state === 'merged') {
                 await api.markJobMerged(job._id, {
                     gitlab: {branch, commit_sha: commitSha, pushed: true, ...mergeRequest}
                 })

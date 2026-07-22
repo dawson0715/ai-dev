@@ -272,6 +272,29 @@ export function jobsModel(db) {
             )
         },
 
+        // Segna la richiesta di merge manuale: il worker esegue davvero il merge
+        // su GitLab al prossimo giro di polling (nessun RPC diretto api->worker).
+        requestMerge(id) {
+            return collection.findOneAndUpdate(
+                {_id: id, status: 'awaiting_merge'},
+                {$set: {merge_requested_at: new Date()}},
+                {returnDocument: 'after'}
+            )
+        },
+
+        // Rilascia lo slot progetto senza cambiare stato: la MR resta in attesa
+        // di merge (monitorata dal worker) ma il prossimo task in coda può partire.
+        releaseForManualReview(id) {
+            return collection.findOneAndUpdate(
+                {_id: id, status: 'awaiting_merge', project_slot: true},
+                {
+                    $set: {manual_review_at: new Date()},
+                    $unset: {project_slot: '', heartbeat_at: ''}
+                },
+                {returnDocument: 'after'}
+            )
+        },
+
         markMerged(id, gitlab) {
             return collection.findOneAndUpdate(
                 {_id: id, status: 'awaiting_merge'},

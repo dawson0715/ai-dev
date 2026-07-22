@@ -62,11 +62,42 @@ async function isGitRepo(p) {
     }
 }
 
+// Confronta l'URL ignorando credenziali/trailing slash: injectCredentials
+// scrive user/password nell'URL del remote, quindi un confronto letterale
+// darebbe sempre esito diverso da project.gitlab.url.
+function normalizeRepoUrl(url) {
+    try {
+        const u = new URL(url)
+        u.username = ''
+        u.password = ''
+        return u.toString().replace(/\/$/, '')
+    } catch {
+        return url
+    }
+}
+
+async function currentOriginUrl(repoPath) {
+    try {
+        const url = await simpleGit(repoPath).raw(['remote', 'get-url', 'origin'])
+        return url.trim()
+    } catch {
+        return null
+    }
+}
+
 export async function ensureClone(project, workspace) {
     const repoPath = path.join(workspace, 'cache', project._id.toString())
 
     if (await isGitRepo(repoPath)) {
-        return repoPath
+        const origin = await currentOriginUrl(repoPath)
+        if (origin && normalizeRepoUrl(origin) === normalizeRepoUrl(project.gitlab.url)) {
+            return repoPath
+        }
+        // Il repo GitLab associato al progetto è cambiato (URL aggiornato dopo la
+        // creazione): la cache in /opt/cache punta ancora al vecchio remote, va
+        // rifatto il clone da zero, altrimenti i job continuano a lavorare sul
+        // repository sbagliato.
+        await fs.rm(repoPath, {recursive: true, force: true})
     }
 
     await fs.mkdir(repoPath, {recursive: true})

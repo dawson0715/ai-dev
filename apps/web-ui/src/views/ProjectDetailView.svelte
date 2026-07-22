@@ -33,7 +33,8 @@
         clickup_list_id: '',
         gitlab_url: '',
         gitlab_service_account: '',
-        gitlab_default_branch: ''
+        gitlab_default_branch: '',
+        gitlab_direct_branch: false
     })
     let saving = $state(false)
 
@@ -71,7 +72,8 @@
                 clickup_list_id: p.clickup?.list_id ?? '',
                 gitlab_url: p.gitlab?.url ?? '',
                 gitlab_service_account: p.gitlab?.service_account ?? '',
-                gitlab_default_branch: p.gitlab?.default_branch ?? ''
+                gitlab_default_branch: p.gitlab?.default_branch ?? '',
+                gitlab_direct_branch: p.gitlab?.direct_branch === true
             }
         } catch (e) {
             toast.error(`Errore: ${e.message}`)
@@ -239,6 +241,14 @@
         {/if}
         <Field label="GitLab URL" bind:value={editForm.gitlab_url}/>
         <Field label="Branch di default" bind:value={editForm.gitlab_default_branch} placeholder="main"/>
+        <label class="flex items-start gap-2.5 pt-1">
+            <input type="checkbox" bind:checked={editForm.gitlab_direct_branch}
+                   class="h-4 w-4 mt-0.5 rounded border-slate-700 bg-slate-950 text-brand-500 focus:ring-brand-500"/>
+            <span class="text-sm text-slate-300">
+                Lavora direttamente sul branch di default
+                <span class="block text-xs text-slate-500">Nessun feature branch né merge request: l'agente committa e pusha direttamente sul branch di default.</span>
+            </span>
+        </label>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => editOpen = false}>Annulla</Button>
             <Button type="submit" loading={saving}>Salva</Button>

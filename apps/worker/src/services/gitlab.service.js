@@ -90,3 +90,10 @@ export async function getMergeRequest(project, iid) {
     const mergeRequest = await gitlabRequest(project, 'GET', `/merge_requests/${iid}`)
     return mergeRequestView(mergeRequest)
 }
+
+export async function mergeMergeRequest(project, iid) {
+    const merged = await gitlabRequest(project, 'PUT', `/merge_requests/${iid}/merge`, {
+        should_remove_source_branch: true
+    })
+    return mergeRequestView(merged)
+}

@@ -47,7 +47,8 @@ export function projectsService(db) {
             clickup_list_id,
             gitlab_url,
             gitlab_service_account,
-            gitlab_default_branch
+            gitlab_default_branch,
+            gitlab_direct_branch
         }) {
             const normalizedTaskSource = normalizeTaskSource(task_source)
             const result = await model.insert({
@@ -58,7 +59,8 @@ export function projectsService(db) {
                 gitlab: {
                     url: gitlab_url,
                     service_account: gitlab_service_account,
-                    default_branch: normalizeBranch(gitlab_default_branch)
+                    default_branch: normalizeBranch(gitlab_default_branch),
+                    direct_branch: gitlab_direct_branch === true
                 },
                 created_at: new Date()
             })
@@ -92,6 +94,9 @@ export function projectsService(db) {
             }
             if (fields.gitlab_default_branch !== undefined) {
                 allowed['gitlab.default_branch'] = normalizeBranch(fields.gitlab_default_branch)
+            }
+            if (fields.gitlab_direct_branch !== undefined) {
+                allowed['gitlab.direct_branch'] = fields.gitlab_direct_branch === true
             }
             await model.updateById(id, allowed)
             return model.findById(id)

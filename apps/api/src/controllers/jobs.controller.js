@@ -94,6 +94,26 @@ export function jobsController({jobsService}) {
             }
         },
 
+        async requestMerge(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.requestMerge(id)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
+        async requestManualReview(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.requestManualReview(id)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
         async merged(req, reply) {
             const id = new ObjectId(req.params.id)
             try {

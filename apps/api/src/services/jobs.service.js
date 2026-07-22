@@ -299,6 +299,18 @@ export function jobsService(db) {
             return {ok: true}
         },
 
+        async requestMerge(jobId) {
+            const job = await jobs.requestMerge(jobId)
+            if (!job) throw badRequest('job is not awaiting merge')
+            return {ok: true, job}
+        },
+
+        async requestManualReview(jobId) {
+            const job = await jobs.releaseForManualReview(jobId)
+            if (!job) throw badRequest('job is not awaiting merge or has no active project slot')
+            return {ok: true, job}
+        },
+
         async markMerged(jobId, {gitlab} = {}) {
             const job = await jobs.findById(jobId)
             if (!job) throw notFound('job not found')

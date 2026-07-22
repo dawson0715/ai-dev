@@ -93,6 +93,32 @@
         }
     }
 
+    async function requestMerge() {
+        actionLoading = true
+        try {
+            await api.jobs.requestMerge(jobId)
+            toast.success('Merge richiesto, il worker lo eseguirà a breve')
+            await load()
+        } catch (e) {
+            toast.error(`Richiesta merge fallita: ${e.message}`)
+        } finally {
+            actionLoading = false
+        }
+    }
+
+    async function requestManualReview() {
+        actionLoading = true
+        try {
+            await api.jobs.requestManualReview(jobId)
+            toast.success('Slot progetto rilasciato, il prossimo task può partire')
+            await load()
+        } catch (e) {
+            toast.error(`Operazione fallita: ${e.message}`)
+        } finally {
+            actionLoading = false
+        }
+    }
+
     async function markFailed() {
         actionLoading = true
         try {
@@ -204,9 +230,27 @@
     {/if}
 
     {#if job.status === 'awaiting_merge'}
-        <div class="mb-6 p-4 rounded-lg bg-indigo-500/10 ring-1 ring-indigo-500/30 text-sm text-indigo-200">
-            Implementazione pronta: il progetto rimane occupato finché la Merge Request non viene unita nel branch base.
-        </div>
+        <Card class="mb-6">
+            <div class="p-3 rounded-lg bg-indigo-500/10 ring-1 ring-indigo-500/30 text-sm text-indigo-200 mb-4">
+                Implementazione pronta.
+                {#if job.manual_review_at}
+                    Slot progetto rilasciato: il prossimo task in coda può partire mentre la MR resta in revisione.
+                {:else}
+                    Il progetto rimane occupato finché la Merge Request non viene unita nel branch base.
+                {/if}
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <Button onclick={requestMerge} loading={actionLoading} disabled={actionLoading || !!job.merge_requested_at}>
+                    {job.merge_requested_at ? 'Merge richiesto…' : 'Merge'}
+                </Button>
+                <Button variant="secondary" onclick={requestManualReview} loading={actionLoading} disabled={actionLoading || !!job.manual_review_at}>
+                    {job.manual_review_at ? 'In manual review' : 'Manual review'}
+                </Button>
+            </div>
+            {#if job.merge_requested_at}
+                <p class="text-xs text-slate-500 mt-2">Il worker esegue il merge su GitLab al prossimo ciclo di polling (~30s).</p>
+            {/if}
+        </Card>
     {/if}
 
     {#if ['completed', 'merged'].includes(job.status) && !job.estimate}
