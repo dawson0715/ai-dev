@@ -70,6 +70,7 @@ export async function registerRoutes(app, db) {
     app.post('/sprints', sprintsCtl.create)
     app.get('/sprints/:id', sprintsCtl.get)
     app.patch('/sprints/:id', sprintsCtl.update)
+    app.post('/sprints/:id/close', sprintsCtl.close)
     app.post('/sprints/:id/invoice', sprintsCtl.invoice)
     app.post('/sprints/:id/invoice/update', sprintsCtl.invoiceUpdate)
 

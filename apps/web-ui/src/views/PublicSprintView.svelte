@@ -52,7 +52,12 @@
                         <Card padding="none">
                             <div class="px-4 sm:px-6 py-4 border-b border-slate-800 flex items-start justify-between gap-3">
                                 <div class="min-w-0">
-                                    <div class="mb-1.5"><StatusBadge status={sprint.status}/></div>
+                                    <div class="mb-1.5 flex items-center gap-1.5">
+                                        <StatusBadge status={sprint.status}/>
+                                        {#if sprint.archived}
+                                            <span class="inline-flex items-center text-xs px-2 py-1 rounded-full bg-slate-700/40 text-slate-300 ring-1 ring-inset ring-slate-600/40">Archiviato</span>
+                                        {/if}
+                                    </div>
                                     <div class="font-semibold text-slate-100">{sprint.note || 'Sprint'}</div>
                                     {#if sprint.delivery_date}
                                         <div class="text-xs text-slate-500 mt-0.5">consegna {formatDateOnly(sprint.delivery_date)}</div>

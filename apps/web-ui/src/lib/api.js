@@ -71,6 +71,7 @@ export const api = {
         get: (id) => request(`/sprints/${id}`),
         create: (data) => request('/sprints', {method: 'POST', body: data}),
         update: (id, data) => request(`/sprints/${id}`, {method: 'PATCH', body: data}),
+        close: (id) => request(`/sprints/${id}/close`, {method: 'POST'}),
         invoice: (id) => request(`/sprints/${id}/invoice`, {method: 'POST'}),
         invoiceUpdate: (id) => request(`/sprints/${id}/invoice/update`, {method: 'POST'}),
         public: (token) => request(`/public/sprints/${token}`)

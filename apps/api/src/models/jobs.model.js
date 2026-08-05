@@ -363,9 +363,11 @@ export function jobsModel(db) {
                 .toArray()
         },
 
-        // Job fatturabili: completati e non ancora in uno sprint. Include sia i job
-        // sui progetti del cliente sia i job di supporto remoto agganciati direttamente
-        // al cliente (che non hanno project_id).
+        // Job fatturabili: completati (o in manual review, che a livello di
+        // billing vale come concluso anche se il merge Git non e' ancora
+        // confermato) e non ancora in uno sprint. Include sia i job sui progetti
+        // del cliente sia i job di supporto remoto agganciati direttamente al
+        // cliente (che non hanno project_id).
         findBillable({projectIds = [], clientId} = {}) {
             const or = []
             if (projectIds.length) or.push({project_id: {$in: projectIds}})
@@ -373,7 +375,18 @@ export function jobsModel(db) {
             if (!or.length) return Promise.resolve([])
             return collection
                 .find(
-                    {status: {$in: ['completed', 'merged']}, sprint_id: {$exists: false}, $or: or},
+                    {
+                        sprint_id: {$exists: false},
+                        $and: [
+                            {$or: or},
+                            {
+                                $or: [
+                                    {status: {$in: ['completed', 'merged']}},
+                                    {status: 'awaiting_merge', manual_review_at: {$exists: true}}
+                                ]
+                            }
+                        ]
+                    },
                     {projection: {executions: 0}}
                 )
                 .sort({created_at: -1})
@@ -388,9 +401,22 @@ export function jobsModel(db) {
             )
         },
 
+        // Chiusura sprint senza fattura: i job dello sprint vengono archiviati,
+        // spariscono dalla pagina job e restano visibili solo dal dettaglio sprint.
+        archiveBySprint(sprintId) {
+            return collection.updateMany(
+                {sprint_id: sprintId},
+                {$set: {archived: true}}
+            )
+        },
+
+        // Esclude di default i job archiviati (sprint chiuso senza fattura):
+        // restano visibili solo dal dettaglio dello sprint che li contiene.
         findAll({limit = 100, status} = {}) {
+            const filter = {archived: {$ne: true}}
+            if (status) filter.status = status
             return collection
-                .find(status ? {status} : {}, {projection: {executions: 0}})
+                .find(filter, {projection: {executions: 0}})
                 .sort({created_at: -1})
                 .limit(limit)
                 .toArray()

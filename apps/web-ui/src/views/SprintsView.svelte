@@ -17,6 +17,8 @@
     let sprints = $state([])
     let loading = $state(true)
     let filterClient = $state('')
+    // Attivi = sprint non chiusi; Storico = sprint chiusi senza fattura (job archiviati).
+    let view = $state('attivi')
 
     // Creazione sprint
     let modalOpen = $state(false)
@@ -25,28 +27,30 @@
     let loadingJobs = $state(false)
     let selected = $state(new Set())
     let form = $state(emptyForm())
-    // Diventa true quando l'utente tocca a mano il forfait: smettiamo di
-    // sovrascriverlo con la somma delle stime dei job selezionati.
+    // Diventa true quando l'utente tocca a mano il costo finale: smettiamo di
+    // sovrascriverlo con la somma delle stime dei job selezionati meno lo sconto.
     let priceEdited = $state(false)
 
     function emptyForm() {
-        return {client_id: '', price: '', delivery_date: '', status: 'in_lavorazione', note: ''}
+        return {client_id: '', price: '', discount: '', delivery_date: '', status: 'in_lavorazione', note: ''}
     }
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
     const clientOptions = $derived(clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'})))
     const canCreate = $derived(Boolean(form.client_id) && selected.size > 0)
 
-    // Somma delle stime dei job selezionati: forfait di default dello sprint.
+    // Somma delle stime dei job selezionati: totale di partenza dello sprint,
+    // prima di applicare lo sconto.
     const selectedTotal = $derived(
         billableJobs.reduce((sum, j) => sum + (selected.has(j._id) ? Number(j.estimate) || 0 : 0), 0)
     )
+    const defaultPrice = $derived(Math.max(0, selectedTotal - (Number(form.discount) || 0)))
 
-    // Finché l'utente non modifica il forfait a mano, lo teniamo allineato alla
-    // somma delle stime dei job selezionati.
+    // Finché l'utente non modifica il costo finale a mano, lo teniamo allineato a
+    // somma stime - sconto.
     $effect(() => {
         if (priceEdited) return
-        form.price = selectedTotal ? String(selectedTotal) : ''
+        form.price = defaultPrice ? String(defaultPrice) : ''
     })
 
     async function load() {
@@ -54,7 +58,7 @@
         try {
             const [cs, ss] = await Promise.all([
                 api.clients.list(),
-                api.sprints.list({client_id: filterClient || undefined})
+                api.sprints.list({client_id: filterClient || undefined, archived: view === 'storico' ? 'true' : undefined})
             ])
             clients = cs
             sprints = ss
@@ -79,6 +83,7 @@
         selected = new Set()
         billableJobs = []
         priceEdited = false
+        form.discount = ''
         if (!form.client_id) return
         loadingJobs = true
         try {
@@ -108,11 +113,12 @@
                 client_id: form.client_id,
                 job_ids: [...selected],
                 price: form.price,
+                discount: form.discount,
                 delivery_date: form.delivery_date || undefined,
                 status: form.status,
                 note: form.note
             })
-            toast.success(`Sprint creato (forfait ${formatCurrency(r.price)})`)
+            toast.success(`Sprint creato (costo finale ${formatCurrency(r.price)})`)
             modalOpen = false
             go(`/sprints/${r.sprint_id}`)
         } catch (e) {
@@ -124,6 +130,7 @@
 
     $effect(() => {
         filterClient
+        view
         load()
     })
 </script>
@@ -131,12 +138,22 @@
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
     <div>
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100">Sprint</h1>
-        <p class="text-slate-400 text-sm mt-1">Lavori fatturati a forfait per cliente, raggruppando i job completati.</p>
+        <p class="text-slate-400 text-sm mt-1">Lavori fatturati a costo finale per cliente, raggruppando i job completati.</p>
     </div>
     <Button onclick={openCreate} disabled={clients.length === 0}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         Nuovo sprint
     </Button>
+</div>
+
+<div class="flex gap-2 mb-4">
+    {#each [{key: 'attivi', label: 'Attivi'}, {key: 'storico', label: 'Storico'}] as t}
+        <button
+            onclick={() => view = t.key}
+            class="px-3 py-1.5 rounded-full text-sm whitespace-nowrap ring-1 ring-inset transition {view === t.key ? 'bg-brand-600 text-white ring-brand-500' : 'text-slate-300 ring-slate-700 hover:ring-slate-600 hover:bg-slate-800/60'}">
+            {t.label}
+        </button>
+    {/each}
 </div>
 
 <Card padding="sm" class="mb-5">
@@ -148,18 +165,24 @@
     <div class="flex justify-center py-16"><Spinner size={32}/></div>
 {:else if sprints.length === 0}
     <Card>
-        <EmptyState title="Nessuno sprint" description="Crea uno sprint raggruppando i job completati di un cliente e fissando il forfait."/>
+        <EmptyState title={view === 'storico' ? 'Nessuno sprint in storico' : 'Nessuno sprint'}
+                    description={view === 'storico' ? 'Gli sprint chiusi senza fattura compaiono qui.' : 'Crea uno sprint raggruppando i job completati di un cliente e fissando il costo finale.'}/>
     </Card>
 {:else}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {#each sprints as s (s._id)}
             <button onclick={() => go(`/sprints/${s._id}`)} class="text-left group">
-                <Card class="hover:ring-brand-500/40 transition cursor-pointer h-full">
+                <Card class="hover:ring-brand-500/40 transition cursor-pointer h-full {s.archived ? 'opacity-70' : ''}">
                     <div class="flex items-start justify-between gap-3 mb-3">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500/30 to-brand-700/30 ring-1 ring-brand-500/30 flex items-center justify-center text-brand-200">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
                         </div>
-                        <StatusBadge status={s.status}/>
+                        <div class="flex items-center gap-1.5">
+                            {#if s.archived}
+                                <span class="inline-flex items-center text-xs px-2 py-1 rounded-full bg-slate-700/40 text-slate-300 ring-1 ring-inset ring-slate-600/40">Archiviato</span>
+                            {/if}
+                            <StatusBadge status={s.status}/>
+                        </div>
                     </div>
                     <h3 class="font-semibold text-slate-100 truncate">{clientName[s.client_id] ?? '—'}</h3>
                     <p class="text-xs text-slate-500 mt-1 truncate">{s.note || 'Nessuna nota'}</p>
@@ -205,12 +228,19 @@
                 {/if}
             </div>
 
+            <div class="flex items-center justify-between text-sm bg-slate-950/50 rounded-lg ring-1 ring-slate-800 px-3 py-2">
+                <span class="text-slate-400">Totale stime selezionate</span>
+                <span class="text-slate-100 font-medium tabular-nums">{formatCurrency(selectedTotal)}</span>
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
-                <Field label="Forfait (€)" type="number" step="0.01" min="0" bind:value={form.price}
-                       placeholder="0.00" oninput={() => priceEdited = true}
-                       hint="Default: somma delle stime dei job selezionati."/>
+                <Field label="Sconto (€)" type="number" step="0.01" min="0" bind:value={form.discount}
+                       placeholder="0.00"/>
                 <Field label="Data consegna" type="date" bind:value={form.delivery_date}/>
             </div>
+            <Field label="Costo finale (€)" type="number" step="0.01" min="0" bind:value={form.price}
+                   placeholder="0.00" oninput={() => priceEdited = true}
+                   hint="Default: totale stime - sconto."/>
             <Select label="Stato" bind:value={form.status} options={SPRINT_STATUSES}/>
             <Field label="Nota" bind:value={form.note} multiline rows={2} placeholder="Nota opzionale sullo sprint"/>
         {/if}

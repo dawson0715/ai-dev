@@ -8,8 +8,8 @@ function handle(err, reply) {
 export function sprintsController({sprintsService}) {
     return {
         async list(req, reply) {
-            const {client_id} = req.query ?? {}
-            return sprintsService.findAll({client_id})
+            const {client_id, archived} = req.query ?? {}
+            return sprintsService.findAll({client_id, archived})
         },
 
         async get(req, reply) {
@@ -41,6 +41,20 @@ export function sprintsController({sprintsService}) {
             }
             try {
                 return await sprintsService.update(id, req.body ?? {})
+            } catch (err) {
+                return handle(err, reply)
+            }
+        },
+
+        async close(req, reply) {
+            let id
+            try {
+                id = new ObjectId(req.params.id)
+            } catch {
+                return reply.code(400).send({error: 'invalid sprint id'})
+            }
+            try {
+                return await sprintsService.close(id)
             } catch (err) {
                 return handle(err, reply)
             }

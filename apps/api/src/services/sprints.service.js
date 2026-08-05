@@ -27,7 +27,10 @@ function toNumber(value) {
 }
 
 // Vista del job esposta nel dettaglio sprint: solo i campi utili, niente prompt/log.
-function jobView(job) {
+// projectById (opzionale) risolve project_id -> nome progetto, per raggruppare
+// i job dello sprint per progetto lato UI.
+function jobView(job, projectById = new Map()) {
+    const project = job.project_id ? projectById.get(String(job.project_id)) : null
     return {
         _id: job._id,
         title: job.title ?? job.clickup?.title ?? '(senza titolo)',
@@ -37,6 +40,9 @@ function jobView(job) {
         cost_usd: job.cost_usd ?? 0,
         source: job.source ?? null,
         minutes: job.minutes ?? 0,
+        project_id: job.project_id ?? null,
+        project_name: project?.name ?? null,
+        completed_at: job.completed_at ?? job.implemented_at ?? null,
         created_at: job.created_at
     }
 }
@@ -53,7 +59,7 @@ export function sprintsService(db) {
         if (!sprint) throw notFound('sprint not found')
 
         const price = toNumber(sprint.price)
-        if (price <= 0) throw badRequest('forfait dello sprint a 0: imposta un prezzo prima di fatturare')
+        if (price <= 0) throw badRequest('costo finale dello sprint a 0: imposta un prezzo prima di fatturare')
 
         const client = await clients.findById(sprint.client_id)
         if (!client) throw notFound('client not found')
@@ -65,14 +71,16 @@ export function sprintsService(db) {
         return {sprint, client, price, clientId}
     }
 
-    // Corpo fattura Deplot (riga unica forfait). Stesso shape per create e update.
+    // Corpo fattura Deplot (riga unica, importo gia' netto sconto). Stesso shape
+    // per create e update. Lo sconto e' solo un riferimento informativo per il
+    // backoffice: l'importo fatturato resta price (il "costo finale" dello sprint).
     function buildInvoicePayload({sprint, client, price, clientId}, indt) {
-        const description = (sprint.note ?? '').trim() || `Sprint ${client.name ?? ''}`.trim() || 'Forfait sprint'
+        const description = (sprint.note ?? '').trim() || `Sprint ${client.name ?? ''}`.trim() || 'Costo finale sprint'
         return {
             clientId,
             indt,
             direction: 1,
-            discount: 0,
+            discount: toNumber(sprint.discount),
             // note: max 100 caratteri lato backoffice.
             note: description.slice(0, 100),
             lines: [{description, amount: price, rate: price, time: 1}]
@@ -98,8 +106,9 @@ export function sprintsService(db) {
     return {
         init: () => model.init(),
 
-        async findAll({client_id} = {}) {
-            const filter = {}
+        // archived: 'true' -> solo storico (sprint chiusi senza fattura); default -> solo attivi.
+        async findAll({client_id, archived} = {}) {
+            const filter = {archived: archived === 'true' || archived === true ? true : {$ne: true}}
             if (client_id) filter.client_id = new ObjectId(client_id)
             return model.find(filter)
         },
@@ -108,13 +117,20 @@ export function sprintsService(db) {
             const sprint = await model.findById(id)
             if (!sprint) return null
             const sprintJobs = await jobs.findBySprint(id)
-            return {...sprint, jobs: sprintJobs.map(jobView)}
+
+            const projectIds = [
+                ...new Set(sprintJobs.filter((j) => j.project_id).map((j) => String(j.project_id)))
+            ].map((s) => new ObjectId(s))
+            const projectDocs = projectIds.length ? await projects.findByIds(projectIds) : []
+            const projectById = new Map(projectDocs.map((p) => [String(p._id), p]))
+
+            return {...sprint, jobs: sprintJobs.map((j) => jobView(j, projectById))}
         },
 
         // Crea uno sprint a forfait (a consuntivo): raggruppa i job indicati, valida
         // che appartengano a progetti dello stesso cliente e non siano gia' assegnati,
         // poi fissa il prezzo forfettario e calcola il costo AI reale (rollup dei job).
-        async create({client_id, job_ids, price, delivery_date, note, status}) {
+        async create({client_id, job_ids, price, discount, delivery_date, note, status}) {
             if (!client_id) throw badRequest('client_id is required')
             if (!Array.isArray(job_ids) || job_ids.length === 0) {
                 throw badRequest('job_ids is required')
@@ -162,12 +178,15 @@ export function sprintsService(db) {
             const res = await model.insert({
                 client_id: clientObjId,
                 price: toNumber(price),
+                discount: toNumber(discount),
                 delivery_date: delivery_date ? new Date(delivery_date) : null,
                 status: cleanStatus,
                 note: (note ?? '').trim(),
                 ai_cost_usd: aiCostUsd,
                 paid: false,
                 invoice_id: null,
+                archived: false,
+                archived_at: null,
                 created_at: new Date()
             })
             const sprintId = res.insertedId
@@ -177,16 +196,31 @@ export function sprintsService(db) {
             return {ok: true, sprint_id: sprintId.toString(), price: toNumber(price)}
         },
 
-        // Modifica i campi fatturabili dello sprint (forfait + nota). NON tocca la
-        // fattura su Deplot: per propagare le modifiche usa updateInvoice().
-        async update(sprintId, {price, note}) {
+        // Modifica i campi fatturabili dello sprint (costo finale, sconto, nota).
+        // NON tocca la fattura su Deplot: per propagare le modifiche usa updateInvoice().
+        async update(sprintId, {price, discount, note}) {
             const sprint = await model.findById(sprintId)
             if (!sprint) throw notFound('sprint not found')
+            if (sprint.archived) throw badRequest('sprint chiuso: non modificabile')
 
             const fields = {}
             if (price !== undefined) fields.price = toNumber(price)
+            if (discount !== undefined) fields.discount = toNumber(discount)
             if (note !== undefined) fields.note = (note ?? '').trim()
             if (Object.keys(fields).length) await model.update(sprintId, fields)
+            return {ok: true}
+        },
+
+        // Chiude lo sprint senza generare fattura: i job vengono archiviati (spariscono
+        // dalla pagina job, restano visibili solo dal dettaglio di questo sprint) e lo
+        // sprint stesso passa nello storico. Azione non reversibile da UI.
+        async close(sprintId) {
+            const sprint = await model.findById(sprintId)
+            if (!sprint) throw notFound('sprint not found')
+            if (sprint.archived) throw badRequest('sprint gia chiuso')
+
+            await model.update(sprintId, {archived: true, archived_at: new Date()})
+            await jobs.archiveBySprint(sprint._id)
             return {ok: true}
         },
 
@@ -245,6 +279,7 @@ export function sprintsService(db) {
                     note: s.note,
                     price: s.price,
                     status: s.status,
+                    archived: s.archived ?? false,
                     delivery_date: s.delivery_date,
                     created_at: s.created_at,
                     jobs: jobsBySprint.get(String(s._id)) ?? []
