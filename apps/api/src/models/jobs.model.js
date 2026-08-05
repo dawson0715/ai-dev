@@ -401,6 +401,16 @@ export function jobsModel(db) {
             )
         },
 
+        // Rimuove un job dallo sprint (torna tra i job fatturabili non assegnati).
+        // Filtrato anche per sprint_id: evita di staccare un job nel frattempo
+        // riassegnato a un altro sprint.
+        removeFromSprint(id, sprintId) {
+            return collection.updateOne(
+                {_id: id, sprint_id: sprintId},
+                {$unset: {sprint_id: ''}}
+            )
+        },
+
         // Rollup per sprint: somma delle stime (costo finale lordo, prima dello
         // sconto) e range di date (data completamento primo/ultimo job). Usato per
         // mostrare il costo finale e l'intervallo dello sprint senza doverli

@@ -253,6 +253,25 @@ export function sprintsService(db) {
             return {ok: true}
         },
 
+        // Rimuove un job dallo sprint: torna tra i job fatturabili non assegnati
+        // del cliente. Non permesso su sprint chiusi (i job sono gia' archiviati).
+        async removeJob(sprintId, jobId) {
+            const sprint = await model.findById(sprintId)
+            if (!sprint) throw notFound('sprint not found')
+            if (sprint.archived) throw badRequest('sprint chiuso: non modificabile')
+
+            let objJobId
+            try {
+                objJobId = new ObjectId(jobId)
+            } catch {
+                throw badRequest('invalid job id')
+            }
+
+            const res = await jobs.removeFromSprint(objJobId, sprint._id)
+            if (!res.matchedCount) throw notFound('job non trovato in questo sprint')
+            return {ok: true}
+        },
+
         // Modifica i campi fatturabili dello sprint: solo sconto e nota. Il costo
         // finale non e' modificabile direttamente: cambia aggiungendo/rimuovendo job
         // o lo sconto. NON tocca la fattura su Deplot: per propagare le modifiche
@@ -327,11 +346,39 @@ export function sprintsService(db) {
                 jobsBySprint.get(key).push(job)
             }
 
+            const projectIds = [
+                ...new Set(allJobs.filter((j) => j.project_id).map((j) => String(j.project_id)))
+            ].map((s) => new ObjectId(s))
+            const projectDocs = projectIds.length ? await projects.findByIds(projectIds) : []
+            const projectById = new Map(projectDocs.map((p) => [String(p._id), p]))
+
             return {
                 client: {name: client.name},
                 sprints: sprintList.map((s) => {
                     const sJobs = jobsBySprint.get(String(s._id)) ?? []
                     const subtotal = sJobs.reduce((sum, j) => sum + (j.estimate ?? 0), 0)
+
+                    // Raggruppa i job per progetto (i job di supporto/manuali senza
+                    // progetto finiscono in un gruppo residuo), con subtotale per gruppo.
+                    const groups = new Map()
+                    for (const j of sJobs) {
+                        const projectName = j.project_id
+                            ? (projectById.get(String(j.project_id))?.name ?? null)
+                            : null
+                        const key = projectName ?? (j.source === 'support' ? 'Supporto' : 'Altro')
+                        if (!groups.has(key)) groups.set(key, [])
+                        groups.get(key).push({
+                            title: j.title ?? j.clickup?.title ?? '(senza titolo)',
+                            status: j.status,
+                            price: j.estimate ?? 0
+                        })
+                    }
+                    const jobGroups = [...groups.entries()].map(([name, jobList]) => ({
+                        name,
+                        subtotal: jobList.reduce((sum, j) => sum + j.price, 0),
+                        jobs: jobList
+                    }))
+
                     return {
                         _id: s._id,
                         note: s.note,
@@ -339,10 +386,7 @@ export function sprintsService(db) {
                         status: s.status,
                         archived: s.archived ?? false,
                         created_at: s.created_at,
-                        jobs: sJobs.map((j) => ({
-                            title: j.title ?? j.clickup?.title ?? '(senza titolo)',
-                            status: j.status
-                        }))
+                        job_groups: jobGroups
                     }
                 })
             }

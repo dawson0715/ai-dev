@@ -34,6 +34,10 @@
     let loadingAddJobs = $state(false)
     let addSelected = $state(new Set())
 
+    // Rimozione job dallo sprint
+    let removeTarget = $state(null)
+    let removingJob = $state(false)
+
     const publicUrl = $derived(
         client?.token ? `${window.location.origin}${window.location.pathname}#/public/sprint/${client.token}` : ''
     )
@@ -170,6 +174,21 @@
         }
     }
 
+    async function removeJob() {
+        if (!removeTarget) return
+        removingJob = true
+        try {
+            await api.sprints.removeJob(sprintId, removeTarget._id)
+            toast.success('Job rimosso dallo sprint')
+            removeTarget = null
+            await load()
+        } catch (e) {
+            toast.error(`Rimozione fallita: ${e.message}`)
+        } finally {
+            removingJob = false
+        }
+    }
+
     $effect(() => {
         sprintId
         load()
@@ -264,9 +283,9 @@
                 </div>
                 <ul class="divide-y divide-slate-800">
                     {#each group.jobs as job (job._id)}
-                        <li>
+                        <li class="flex items-center">
                             <button onclick={() => go(`/jobs/${job._id}`)}
-                                    class="w-full text-left px-4 sm:px-6 py-4 hover:bg-slate-800/40 transition flex items-center gap-3">
+                                    class="flex-1 min-w-0 text-left px-4 sm:px-6 py-4 hover:bg-slate-800/40 transition flex items-center gap-3">
                                 <div class="flex-1 min-w-0">
                                     <div class="font-medium text-slate-100 truncate">{job.title}</div>
                                     {#if job.completed_at}
@@ -282,6 +301,13 @@
                                     {/if}
                                 </div>
                             </button>
+                            {#if !sprint.archived}
+                                <button onclick={() => removeTarget = job}
+                                        title="Rimuovi dallo sprint"
+                                        class="shrink-0 p-2 mr-3 sm:mr-5 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+                                </button>
+                            {/if}
                         </li>
                     {/each}
                 </ul>
@@ -336,6 +362,16 @@
         {#snippet footer()}
             <Button variant="ghost" onclick={() => confirmClose = false}>Annulla</Button>
             <Button variant="warning" onclick={closeSprint} loading={closing}>Chiudi sprint</Button>
+        {/snippet}
+    </Modal>
+
+    <Modal open={!!removeTarget} title="Rimuovere il job dallo sprint?" onclose={() => removeTarget = null}>
+        <p class="text-slate-300">
+            <strong>{removeTarget?.title}</strong> verrà tolto da questo sprint e tornerà tra i job fatturabili non assegnati del cliente.
+        </p>
+        {#snippet footer()}
+            <Button variant="ghost" onclick={() => removeTarget = null}>Annulla</Button>
+            <Button variant="danger" onclick={removeJob} loading={removingJob}>Rimuovi</Button>
         {/snippet}
     </Modal>
 

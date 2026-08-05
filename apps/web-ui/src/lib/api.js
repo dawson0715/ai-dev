@@ -73,6 +73,7 @@ export const api = {
         create: (data) => request('/sprints', {method: 'POST', body: data}),
         update: (id, data) => request(`/sprints/${id}`, {method: 'PATCH', body: data}),
         addJobs: (id, jobIds) => request(`/sprints/${id}/jobs`, {method: 'POST', body: {job_ids: jobIds}}),
+        removeJob: (id, jobId) => request(`/sprints/${id}/jobs/${jobId}`, {method: 'DELETE'}),
         close: (id) => request(`/sprints/${id}/close`, {method: 'POST'}),
         invoice: (id) => request(`/sprints/${id}/invoice`, {method: 'POST'}),
         invoiceUpdate: (id) => request(`/sprints/${id}/invoice/update`, {method: 'POST'}),

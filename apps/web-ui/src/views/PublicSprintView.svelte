@@ -50,28 +50,30 @@
                 <div class="space-y-5">
                     {#each data.sprints as sprint (sprint._id)}
                         <Card padding="none">
-                            <div class="px-4 sm:px-6 py-4 border-b border-slate-800 flex items-start justify-between gap-3">
-                                <div class="min-w-0">
-                                    <div class="mb-1.5 flex items-center gap-1.5">
-                                        <StatusBadge status={sprint.status}/>
-                                        {#if sprint.archived}
-                                            <span class="inline-flex items-center text-xs px-2 py-1 rounded-full bg-slate-700/40 text-slate-300 ring-1 ring-inset ring-slate-600/40">Archiviato</span>
-                                        {/if}
-                                    </div>
-                                    <div class="font-semibold text-slate-100">{sprint.note || 'Sprint'}</div>
+                            <div class="px-4 sm:px-6 py-4 border-b border-slate-800">
+                                <div class="mb-1.5 flex items-center gap-1.5">
+                                    <StatusBadge status={sprint.status}/>
+                                    {#if sprint.archived}
+                                        <span class="inline-flex items-center text-xs px-2 py-1 rounded-full bg-slate-700/40 text-slate-300 ring-1 ring-inset ring-slate-600/40">Archiviato</span>
+                                    {/if}
                                 </div>
-                                <div class="text-xl font-bold text-slate-100 tabular-nums shrink-0">{formatCurrency(sprint.price)}</div>
+                                <div class="font-semibold text-slate-100">{sprint.note || 'Sprint'}</div>
                             </div>
-                            {#if sprint.jobs?.length}
+                            {#each sprint.job_groups ?? [] as group (group.name)}
+                                <div class="px-4 sm:px-6 py-2 bg-slate-950/40 flex items-center justify-between gap-3 border-b border-slate-800">
+                                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">{group.name}</span>
+                                    <span class="text-xs font-semibold text-slate-400 tabular-nums shrink-0">{formatCurrency(group.subtotal)}</span>
+                                </div>
                                 <ul class="divide-y divide-slate-800/60">
-                                    {#each sprint.jobs as job, i (i)}
+                                    {#each group.jobs as job, i (i)}
                                         <li class="px-4 sm:px-6 py-2.5 text-sm text-slate-300 flex items-center gap-2">
                                             <svg class="text-slate-600 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
-                                            <span class="truncate">{job.title}</span>
+                                            <span class="truncate flex-1">{job.title}</span>
+                                            <span class="text-slate-400 tabular-nums shrink-0">{formatCurrency(job.price)}</span>
                                         </li>
                                     {/each}
                                 </ul>
-                            {/if}
+                            {/each}
                         </Card>
                     {/each}
                 </div>
