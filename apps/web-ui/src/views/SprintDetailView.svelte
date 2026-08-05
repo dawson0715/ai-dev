@@ -193,7 +193,7 @@
         </div>
         <div class="flex flex-wrap items-center gap-2 shrink-0">
             {#if !sprint.archived}
-                <Button size="sm" variant="danger" onclick={openEdit}>Modifica</Button>
+                <Button size="sm" variant="primary" onclick={openEdit}>Modifica</Button>
             {/if}
             {#if sprint.archived}
                 <span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-slate-700/40 text-slate-300 ring-1 ring-inset ring-slate-600/40">
@@ -204,12 +204,12 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                     Fatturato{sprint.invoice_number ? ` · n. ${sprint.invoice_number}${sprint.invoice_year ? `/${sprint.invoice_year}` : ''}` : ''}
                 </span>
-                <Button size="sm" variant="danger" onclick={() => confirmInvoiceUpdate = true}>Aggiorna fattura</Button>
+                <Button size="sm" variant="success" onclick={() => confirmInvoiceUpdate = true}>Aggiorna fattura</Button>
             {:else}
-                <Button size="sm" variant="danger" onclick={() => confirmInvoice = true}>Genera fattura</Button>
+                <Button size="sm" variant="success" onclick={() => confirmInvoice = true}>Genera fattura</Button>
             {/if}
             {#if !sprint.archived}
-                <Button size="sm" variant="danger" onclick={() => confirmClose = true}>Chiudi sprint</Button>
+                <Button size="sm" variant="warning" onclick={() => confirmClose = true}>Chiudi sprint</Button>
             {/if}
         </div>
     </div>
@@ -268,7 +268,6 @@
                             <button onclick={() => go(`/jobs/${job._id}`)}
                                     class="w-full text-left px-4 sm:px-6 py-4 hover:bg-slate-800/40 transition flex items-center gap-3">
                                 <div class="flex-1 min-w-0">
-                                    <div class="mb-1"><StatusBadge status={job.status}/></div>
                                     <div class="font-medium text-slate-100 truncate">{job.title}</div>
                                     {#if job.completed_at}
                                         <div class="text-xs text-slate-500 mt-0.5">Completato {formatDateOnly(job.completed_at)}</div>
@@ -298,7 +297,7 @@
         </p>
         {#snippet footer()}
             <Button variant="ghost" onclick={() => confirmInvoice = false}>Annulla</Button>
-            <Button variant="danger" onclick={generateInvoice} loading={invoicing}>Genera fattura</Button>
+            <Button variant="success" onclick={generateInvoice} loading={invoicing}>Genera fattura</Button>
         {/snippet}
     </Modal>
 
@@ -325,7 +324,7 @@
         </p>
         {#snippet footer()}
             <Button variant="ghost" onclick={() => confirmInvoiceUpdate = false}>Annulla</Button>
-            <Button variant="danger" onclick={syncInvoice} loading={updatingInvoice}>Aggiorna fattura</Button>
+            <Button variant="success" onclick={syncInvoice} loading={updatingInvoice}>Aggiorna fattura</Button>
         {/snippet}
     </Modal>
 
@@ -336,7 +335,7 @@
         </p>
         {#snippet footer()}
             <Button variant="ghost" onclick={() => confirmClose = false}>Annulla</Button>
-            <Button variant="danger" onclick={closeSprint} loading={closing}>Chiudi sprint</Button>
+            <Button variant="warning" onclick={closeSprint} loading={closing}>Chiudi sprint</Button>
         {/snippet}
     </Modal>
 

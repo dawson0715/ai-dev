@@ -16,7 +16,9 @@
         primary: 'bg-brand-600 hover:bg-brand-500 text-white shadow-sm shadow-brand-900/40',
         secondary: 'bg-slate-800 hover:bg-slate-700 text-slate-100 ring-1 ring-slate-700',
         ghost: 'bg-transparent hover:bg-slate-800 text-slate-200',
-        danger: 'bg-rose-600 hover:bg-rose-500 text-white'
+        danger: 'bg-rose-600 hover:bg-rose-500 text-white',
+        warning: 'bg-amber-600 hover:bg-amber-500 text-white',
+        success: 'bg-emerald-600 hover:bg-emerald-500 text-white'
     }
     const sizes = {
         sm: 'px-3 py-1.5 text-sm rounded-md',

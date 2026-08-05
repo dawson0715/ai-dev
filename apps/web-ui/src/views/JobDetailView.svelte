@@ -273,7 +273,7 @@
         </Card>
     {/if}
 
-    {#if ['completed', 'merged'].includes(job.status) && !job.estimate}
+    {#if ['completed', 'merged'].includes(job.status) && !job.estimate && !job.sprint_id}
         <div class="mb-6 p-4 rounded-lg bg-amber-500/10 ring-1 ring-amber-500/30 text-sm text-amber-200">
             Job completato senza stima. Impostane una prima che entri in uno sprint.
         </div>
