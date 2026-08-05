@@ -10,7 +10,7 @@
     import Spinner from '../components/Spinner.svelte'
 
     function emptyForm() {
-        return {external_id: '', name: '', email: '', numbers: ''}
+        return {external_id: '', name: '', email: '', numbers: '', hourly_rate_eur: ''}
     }
 
     let clients = $state([])
@@ -46,7 +46,8 @@
             external_id: client.external_id ?? '',
             name: client.name ?? '',
             email: client.email ?? '',
-            numbers: (client.numbers ?? []).join('\n')
+            numbers: (client.numbers ?? []).join('\n'),
+            hourly_rate_eur: client.hourly_rate_eur ? String(client.hourly_rate_eur) : ''
         }
         editorOpen = true
     }
@@ -65,7 +66,8 @@
             external_id: form.external_id,
             name: form.name,
             email: form.email,
-            numbers: parseNumbers(form.numbers)
+            numbers: parseNumbers(form.numbers),
+            hourly_rate_eur: form.hourly_rate_eur
         }
 
         try {
@@ -141,6 +143,9 @@
                     <div class="min-w-0 flex-1">
                         <h2 class="font-semibold text-slate-100 truncate">{client.name || '(senza nome)'}</h2>
                         <p class="text-xs text-slate-500 mt-0.5 truncate">ID backoffice: {client.external_id || '—'}</p>
+                        {#if client.hourly_rate_eur}
+                            <p class="text-xs text-slate-500 mt-0.5 truncate">Tariffa: {client.hourly_rate_eur}€/h</p>
+                        {/if}
                     </div>
                 </div>
 
@@ -188,6 +193,9 @@
         <Field label="Numeri di telefono" bind:value={form.numbers} multiline rows={3}
                placeholder={'+39 02 123456\n+39 333 1234567'}
                hint="Inserisci un numero per riga; sono accettati anche virgole e punti e virgola."/>
+        <Field label="Tariffa oraria (€)" type="number" step="0.01" min="0" bind:value={form.hourly_rate_eur}
+               placeholder="0.00"
+               hint="Usata per calcolare la Stima (€) dei job dal tempo umano stimato dall'agente. Vuoto/0 = nessun calcolo automatico."/>
 
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => editorOpen = false}>Annulla</Button>

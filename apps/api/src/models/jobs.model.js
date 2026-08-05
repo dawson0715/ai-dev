@@ -393,12 +393,31 @@ export function jobsModel(db) {
                 .toArray()
         },
 
-        // Assegna un gruppo di job a uno sprint (in fase di creazione sprint).
+        // Assegna un gruppo di job a uno sprint (in creazione o aggiungendoli a uno esistente).
         assignToSprint(ids, sprintId) {
             return collection.updateMany(
                 {_id: {$in: ids}},
                 {$set: {sprint_id: sprintId}}
             )
+        },
+
+        // Rollup per sprint: somma delle stime (costo finale lordo, prima dello
+        // sconto) e range di date (data completamento primo/ultimo job). Usato per
+        // mostrare il costo finale e l'intervallo dello sprint senza doverli
+        // ricalcolare o tenerli disallineati se i job dello sprint cambiano.
+        sprintRollups(sprintIds) {
+            if (!sprintIds.length) return Promise.resolve([])
+            return collection.aggregate([
+                {$match: {sprint_id: {$in: sprintIds}}},
+                {
+                    $group: {
+                        _id: '$sprint_id',
+                        total: {$sum: {$ifNull: ['$estimate', 0]}},
+                        start: {$min: {$ifNull: ['$completed_at', '$implemented_at']}},
+                        end: {$max: {$ifNull: ['$completed_at', '$implemented_at']}}
+                    }
+                }
+            ]).toArray()
         },
 
         // Chiusura sprint senza fattura: i job dello sprint vengono archiviati,

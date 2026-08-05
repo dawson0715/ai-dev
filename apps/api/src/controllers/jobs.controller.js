@@ -54,6 +54,16 @@ export function jobsController({jobsService}) {
             }
         },
 
+        async recalculateEstimate(req, reply) {
+            const id = new ObjectId(req.params.id)
+            try {
+                return await jobsService.recalculateEstimate(id)
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
+        },
+
         async addComment(req, reply) {
             const id = new ObjectId(req.params.id)
             try {

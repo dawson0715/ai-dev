@@ -5,7 +5,7 @@ import {projectsModel} from '../models/projects.model.js'
 import {clientsModel} from '../models/clients.model.js'
 import {createInvoice as createInvoiceApi, updateInvoice as updateInvoiceApi} from './invoice.service.js'
 
-// Stato commerciale dello sprint (la voce fatturabile a forfait).
+// Stato commerciale dello sprint (la voce fatturabile a costo finale).
 export const SPRINT_STATUSES = ['preventivo', 'approvato', 'in_lavorazione', 'completato']
 
 function badRequest(message) {
@@ -53,13 +53,58 @@ export function sprintsService(db) {
     const projects = projectsModel(db)
     const clients = clientsModel(db)
 
+    // Valida un set di job da assegnare a uno sprint di un dato cliente: devono
+    // esistere, non essere gia' in uno sprint, e appartenere al cliente (via
+    // project_id, o direttamente via client_id per i job di supporto).
+    // Condivisa tra create() e addJobs().
+    async function assignValidatedJobs(clientObjId, jobIds) {
+        let ids
+        try {
+            ids = jobIds.map((j) => new ObjectId(j))
+        } catch {
+            throw badRequest('invalid job id in job_ids')
+        }
+
+        const found = await jobs.findByIds(ids)
+        if (found.length !== ids.length) throw badRequest('uno o piu job non esistono')
+
+        // Mappa progetto -> cliente, per validare l'appartenenza dei job. I job di
+        // supporto non hanno project_id: portano il client_id direttamente.
+        const projectIds = [
+            ...new Set(found.filter((j) => j.project_id).map((j) => String(j.project_id)))
+        ].map((s) => new ObjectId(s))
+        const projectDocs = projectIds.length ? await projects.findByIds(projectIds) : []
+        const clientByProject = new Map(projectDocs.map((p) => [String(p._id), p.client_id]))
+
+        for (const job of found) {
+            if (job.sprint_id) throw badRequest(`job ${job._id} gia assegnato a uno sprint`)
+            const owner = job.project_id ? clientByProject.get(String(job.project_id)) : job.client_id
+            if (!owner || !owner.equals(clientObjId)) {
+                throw badRequest(`job ${job._id} non appartiene a questo cliente`)
+            }
+        }
+
+        return ids
+    }
+
+    // Costo finale = somma delle stime dei job dello sprint, meno lo sconto.
+    // Calcolato sempre dal vivo sui job correnti (mai un numero fisso salvato),
+    // cosi' resta corretto anche se si aggiungono job dopo la creazione.
+    function priceFrom(subtotal, discount) {
+        return Math.max(0, subtotal - toNumber(discount))
+    }
+
     // Carica e valida sprint + cliente per una operazione di fatturazione.
     async function resolveForInvoice(sprintId) {
         const sprint = await model.findById(sprintId)
         if (!sprint) throw notFound('sprint not found')
 
-        const price = toNumber(sprint.price)
-        if (price <= 0) throw badRequest('costo finale dello sprint a 0: imposta un prezzo prima di fatturare')
+        const sprintJobs = await jobs.findBySprint(sprintId)
+        const subtotal = sprintJobs.reduce((sum, j) => sum + (j.estimate ?? 0), 0)
+        const price = priceFrom(subtotal, sprint.discount)
+        if (price <= 0) {
+            throw badRequest('costo finale dello sprint a 0: aggiungi job con stima o rivedi lo sconto prima di fatturare')
+        }
 
         const client = await clients.findById(sprint.client_id)
         if (!client) throw notFound('client not found')
@@ -107,10 +152,26 @@ export function sprintsService(db) {
         init: () => model.init(),
 
         // archived: 'true' -> solo storico (sprint chiusi senza fattura); default -> solo attivi.
+        // Costo finale e range date (inizio/fine) sono calcolati dal rollup dei job,
+        // non salvati sullo sprint.
         async findAll({client_id, archived} = {}) {
             const filter = {archived: archived === 'true' || archived === true ? true : {$ne: true}}
             if (client_id) filter.client_id = new ObjectId(client_id)
-            return model.find(filter)
+            const sprintList = await model.find(filter)
+            if (!sprintList.length) return []
+
+            const rollups = await jobs.sprintRollups(sprintList.map((s) => s._id))
+            const rollupById = new Map(rollups.map((r) => [String(r._id), r]))
+
+            return sprintList.map((s) => {
+                const r = rollupById.get(String(s._id)) ?? {total: 0, start: null, end: null}
+                return {
+                    ...s,
+                    price: priceFrom(r.total, s.discount),
+                    start_date: r.start ?? null,
+                    end_date: r.end ?? null
+                }
+            })
         },
 
         async findById(id) {
@@ -124,13 +185,25 @@ export function sprintsService(db) {
             const projectDocs = projectIds.length ? await projects.findByIds(projectIds) : []
             const projectById = new Map(projectDocs.map((p) => [String(p._id), p]))
 
-            return {...sprint, jobs: sprintJobs.map((j) => jobView(j, projectById))}
+            const viewedJobs = sprintJobs.map((j) => jobView(j, projectById))
+            const subtotal = viewedJobs.reduce((sum, j) => sum + (j.estimate ?? 0), 0)
+            const jobDates = viewedJobs.map((j) => j.completed_at).filter(Boolean).map((d) => new Date(d))
+
+            return {
+                ...sprint,
+                jobs: viewedJobs,
+                subtotal,
+                price: priceFrom(subtotal, sprint.discount),
+                start_date: jobDates.length ? new Date(Math.min(...jobDates)) : null,
+                end_date: jobDates.length ? new Date(Math.max(...jobDates)) : null
+            }
         },
 
-        // Crea uno sprint a forfait (a consuntivo): raggruppa i job indicati, valida
-        // che appartengano a progetti dello stesso cliente e non siano gia' assegnati,
-        // poi fissa il prezzo forfettario e calcola il costo AI reale (rollup dei job).
-        async create({client_id, job_ids, price, discount, delivery_date, note, status}) {
+        // Crea uno sprint a costo finale (a consuntivo): raggruppa i job indicati,
+        // valida che appartengano a progetti dello stesso cliente e non siano gia'
+        // assegnati. Il costo finale non si passa: e' sempre la somma delle stime
+        // dei job assegnati, meno lo sconto.
+        async create({client_id, job_ids, discount, note, status}) {
             if (!client_id) throw badRequest('client_id is required')
             if (!Array.isArray(job_ids) || job_ids.length === 0) {
                 throw badRequest('job_ids is required')
@@ -146,43 +219,14 @@ export function sprintsService(db) {
             const client = await clients.findById(clientObjId)
             if (!client) throw notFound('client not found')
 
-            let ids
-            try {
-                ids = job_ids.map((j) => new ObjectId(j))
-            } catch {
-                throw badRequest('invalid job id in job_ids')
-            }
-
-            const found = await jobs.findByIds(ids)
-            if (found.length !== ids.length) throw badRequest('uno o piu job non esistono')
-
-            // Mappa progetto -> cliente, per validare l'appartenenza dei job. I job di
-            // supporto non hanno project_id: portano il client_id direttamente.
-            const projectIds = [
-                ...new Set(found.filter((j) => j.project_id).map((j) => String(j.project_id)))
-            ].map((s) => new ObjectId(s))
-            const projectDocs = await projects.findByIds(projectIds)
-            const clientByProject = new Map(projectDocs.map((p) => [String(p._id), p.client_id]))
-
-            for (const job of found) {
-                if (job.sprint_id) throw badRequest(`job ${job._id} gia assegnato a uno sprint`)
-                const owner = job.project_id ? clientByProject.get(String(job.project_id)) : job.client_id
-                if (!owner || !owner.equals(clientObjId)) {
-                    throw badRequest(`job ${job._id} non appartiene a questo cliente`)
-                }
-            }
-
-            const aiCostUsd = found.reduce((sum, j) => sum + (j.cost_usd ?? 0), 0)
+            const ids = await assignValidatedJobs(clientObjId, job_ids)
             const cleanStatus = SPRINT_STATUSES.includes(status) ? status : 'in_lavorazione'
 
             const res = await model.insert({
                 client_id: clientObjId,
-                price: toNumber(price),
                 discount: toNumber(discount),
-                delivery_date: delivery_date ? new Date(delivery_date) : null,
                 status: cleanStatus,
                 note: (note ?? '').trim(),
-                ai_cost_usd: aiCostUsd,
                 paid: false,
                 invoice_id: null,
                 archived: false,
@@ -193,18 +237,32 @@ export function sprintsService(db) {
 
             await jobs.assignToSprint(ids, sprintId)
 
-            return {ok: true, sprint_id: sprintId.toString(), price: toNumber(price)}
+            return {ok: true, sprint_id: sprintId.toString()}
         },
 
-        // Modifica i campi fatturabili dello sprint (costo finale, sconto, nota).
-        // NON tocca la fattura su Deplot: per propagare le modifiche usa updateInvoice().
-        async update(sprintId, {price, discount, note}) {
+        // Aggiunge altri job (dello stesso cliente, fatturabili) a uno sprint gia'
+        // esistente, con la stessa validazione di create(). Non permesso su sprint chiusi.
+        async addJobs(sprintId, jobIds) {
+            const sprint = await model.findById(sprintId)
+            if (!sprint) throw notFound('sprint not found')
+            if (sprint.archived) throw badRequest('sprint chiuso: non modificabile')
+            if (!Array.isArray(jobIds) || jobIds.length === 0) throw badRequest('job_ids is required')
+
+            const ids = await assignValidatedJobs(sprint.client_id, jobIds)
+            await jobs.assignToSprint(ids, sprint._id)
+            return {ok: true}
+        },
+
+        // Modifica i campi fatturabili dello sprint: solo sconto e nota. Il costo
+        // finale non e' modificabile direttamente: cambia aggiungendo/rimuovendo job
+        // o lo sconto. NON tocca la fattura su Deplot: per propagare le modifiche
+        // usa updateInvoice().
+        async update(sprintId, {discount, note}) {
             const sprint = await model.findById(sprintId)
             if (!sprint) throw notFound('sprint not found')
             if (sprint.archived) throw badRequest('sprint chiuso: non modificabile')
 
             const fields = {}
-            if (price !== undefined) fields.price = toNumber(price)
             if (discount !== undefined) fields.discount = toNumber(discount)
             if (note !== undefined) fields.note = (note ?? '').trim()
             if (Object.keys(fields).length) await model.update(sprintId, fields)
@@ -225,8 +283,8 @@ export function sprintsService(db) {
         },
 
         // Genera la fattura dello sprint chiamando il backoffice (admin.deplot.xyz).
-        // Forfait = riga unica con amount = sprint.price; clientId = client.external_id.
-        // Numero/anno/totali li assegna il server; noi salviamo l'id restituito.
+        // Costo finale = riga unica con amount = somma stime job - sconto;
+        // clientId = client.external_id. Numero/anno/totali li assegna il backoffice.
         async createInvoice(sprintId) {
             const ctx = await resolveForInvoice(sprintId)
             if (ctx.sprint.invoice_id) throw badRequest('sprint gia fatturato')
@@ -237,7 +295,7 @@ export function sprintsService(db) {
             return persistInvoice(sprintId, invoice, indt)
         },
 
-        // Ri-sincronizza la fattura esistente su Deplot con gli attuali forfait/nota
+        // Ri-sincronizza la fattura esistente su Deplot con l'attuale costo finale/nota
         // dello sprint (POST /v1/invoice/{id}/update). Mantiene numero e data originali.
         async updateInvoice(sprintId) {
             const ctx = await resolveForInvoice(sprintId)
@@ -266,24 +324,27 @@ export function sprintsService(db) {
             for (const job of allJobs) {
                 const key = String(job.sprint_id)
                 if (!jobsBySprint.has(key)) jobsBySprint.set(key, [])
-                jobsBySprint.get(key).push({
-                    title: job.title ?? job.clickup?.title ?? '(senza titolo)',
-                    status: job.status
-                })
+                jobsBySprint.get(key).push(job)
             }
 
             return {
                 client: {name: client.name},
-                sprints: sprintList.map((s) => ({
-                    _id: s._id,
-                    note: s.note,
-                    price: s.price,
-                    status: s.status,
-                    archived: s.archived ?? false,
-                    delivery_date: s.delivery_date,
-                    created_at: s.created_at,
-                    jobs: jobsBySprint.get(String(s._id)) ?? []
-                }))
+                sprints: sprintList.map((s) => {
+                    const sJobs = jobsBySprint.get(String(s._id)) ?? []
+                    const subtotal = sJobs.reduce((sum, j) => sum + (j.estimate ?? 0), 0)
+                    return {
+                        _id: s._id,
+                        note: s.note,
+                        price: priceFrom(subtotal, s.discount),
+                        status: s.status,
+                        archived: s.archived ?? false,
+                        created_at: s.created_at,
+                        jobs: sJobs.map((j) => ({
+                            title: j.title ?? j.clickup?.title ?? '(senza titolo)',
+                            status: j.status
+                        }))
+                    }
+                })
             }
         }
     }

@@ -1,6 +1,7 @@
 import {ObjectId} from 'mongodb'
 import {jobsModel} from '../models/jobs.model.js'
 import {projectsModel} from '../models/projects.model.js'
+import {clientsModel} from '../models/clients.model.js'
 import {listTodoTasks, postComment, setTaskStatus} from './clickup.service.js'
 import {listOpenIssues} from './gitlabIssues.service.js'
 import {createNextLiquibaseId} from '../liquibase.js'
@@ -23,7 +24,22 @@ function toEstimate(value) {
 export function jobsService(db) {
     const jobs = jobsModel(db)
     const projects = projectsModel(db)
+    const clients = clientsModel(db)
     let lastStaleRecoveryAt = 0
+
+    // cost_eur stimato dal tempo che l'agente stima impiegherebbe un umano
+    // (minuti) per la tariffa oraria del cliente del progetto. null se il job
+    // non ha un progetto/cliente, o il cliente non ha una tariffa impostata:
+    // in quel caso la Stima (€) resta manuale.
+    async function estimateFromMinutes(job, minutes) {
+        if (!job.project_id) return null
+        const project = await projects.findById(job.project_id)
+        if (!project?.client_id) return null
+        const client = await clients.findById(project.client_id)
+        const rate = Number(client?.hourly_rate_eur)
+        if (!Number.isFinite(rate) || rate <= 0) return null
+        return Math.round((minutes / 60) * rate * 100) / 100
+    }
 
     function notFound(message) {
         const err = new Error(message)
@@ -82,8 +98,10 @@ export function jobsService(db) {
 
         findById: (id) => jobs.findById(id),
 
-        // Job fatturabili di un cliente: completati e non ancora in uno sprint.
-        // Il cliente si ricava dai progetti (project.client_id), non dal job.
+        // Job fatturabili di un cliente: completati (o in manual review) e non
+        // ancora in uno sprint. Il cliente si ricava dai progetti (project.client_id),
+        // non dal job. Arricchiti con project_name per la selezione job in creazione
+        // sprint (filtro per progetto, colonna data).
         async findBillable(clientId) {
             let cid
             try {
@@ -95,7 +113,13 @@ export function jobsService(db) {
             }
             const clientProjects = await projects.findByClient(cid)
             const projectIds = clientProjects.map((p) => p._id)
-            return jobs.findBillable({projectIds, clientId: cid})
+            const billable = await jobs.findBillable({projectIds, clientId: cid})
+
+            const projectById = new Map(clientProjects.map((p) => [String(p._id), p]))
+            return billable.map((j) => ({
+                ...j,
+                project_name: j.project_id ? projectById.get(String(j.project_id))?.name ?? null : null
+            }))
         },
 
         async retry(jobId) {
@@ -225,6 +249,25 @@ export function jobsService(db) {
             return jobs.update(id, clean)
         },
 
+        // Ricalcola la Stima (€) dal tempo salvato (job.minutes) e dalla tariffa
+        // oraria ATTUALE del cliente: utile dopo aver cambiato la tariffa, per
+        // riallineare job già completati senza dover reimpostare i minuti.
+        async recalculateEstimate(jobId) {
+            const job = await jobs.findById(jobId)
+            if (!job) throw notFound('job not found')
+            if (!(job.minutes > 0)) {
+                throw badRequest('job senza tempo stimato: nessun minutaggio da cui ricalcolare')
+            }
+
+            const estimate = await estimateFromMinutes(job, job.minutes)
+            if (estimate == null) {
+                throw badRequest('impossibile ricalcolare: il cliente del progetto non ha una tariffa oraria impostata')
+            }
+
+            await jobs.update(jobId, {estimate})
+            return {ok: true, estimate}
+        },
+
         async heartbeat(jobId) {
             const result = await jobs.heartbeat(jobId)
             if (result.matchedCount === 0) throw badRequest('job is not running')
@@ -272,7 +315,7 @@ export function jobsService(db) {
             return {ok: true}
         },
 
-        async complete(jobId, {execution, gitlab}) {
+        async complete(jobId, {execution, gitlab, minutes, cost_usd}) {
             const job = await jobs.findById(jobId)
             if (!job) throw notFound('job not found')
 
@@ -290,6 +333,22 @@ export function jobsService(db) {
                 implemented_at: new Date()
             }
             if (gitlab) setFields.gitlab = gitlab
+
+            // Stima del worker: minuti che un umano impiegherebbe, da cui deriviamo
+            // (se il cliente ha una tariffa oraria) la Stima (€) del job.
+            const cleanMinutes = Number(minutes)
+            if (Number.isFinite(cleanMinutes) && cleanMinutes > 0) {
+                setFields.minutes = cleanMinutes
+                const estimate = await estimateFromMinutes(job, cleanMinutes)
+                if (estimate != null) setFields.estimate = estimate
+            }
+
+            // Costo AI reale (USD) riportato da Claude (--output-format json,
+            // total_cost_usd), non stimato: rollup mostrato nella riga job dello sprint.
+            const cleanCostUsd = Number(cost_usd)
+            if (Number.isFinite(cleanCostUsd) && cleanCostUsd >= 0) {
+                setFields.cost_usd = cleanCostUsd
+            }
 
             const result = await jobs.pushExecution(jobId, execution, setFields, {
                 expectedStatuses: ['running'],

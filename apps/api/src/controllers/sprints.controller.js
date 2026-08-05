@@ -46,6 +46,20 @@ export function sprintsController({sprintsService}) {
             }
         },
 
+        async addJobs(req, reply) {
+            let id
+            try {
+                id = new ObjectId(req.params.id)
+            } catch {
+                return reply.code(400).send({error: 'invalid sprint id'})
+            }
+            try {
+                return await sprintsService.addJobs(id, req.body?.job_ids ?? [])
+            } catch (err) {
+                return handle(err, reply)
+            }
+        },
+
         async close(req, reply) {
             let id
             try {

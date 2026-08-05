@@ -1,7 +1,7 @@
 import path from 'path'
 import {apiClient} from './services/api.service.js'
 import {commitAll, createWorktree, ensureClone, pruneWorktrees, pushBranch, removeWorktree} from './services/git.service.js'
-import {buildPrompt, runClaude} from './services/agent.service.js'
+import {buildPrompt, parseEstimatedMinutes, runClaude} from './services/agent.service.js'
 import {ensureMergeRequest, getMergeRequest, mergeMergeRequest} from './services/gitlab.service.js'
 import {pollProjectJobs} from './services/project-sync.service.js'
 
@@ -119,6 +119,12 @@ async function processNextJob(executorId) {
     let worktreeCreated = false
     let stdout = ''
     let stderr = ''
+    // Popolati dal JSON strutturato di Claude (--output-format json), se il
+    // parsing va a buon fine: costo reale ed uso token dell'esecuzione.
+    let responseText = ''
+    let inputTokens = null
+    let outputTokens = null
+    let totalCostUsd = null
 
     try {
         repoPath = await ensureClone(project, WORKSPACE)
@@ -129,13 +135,17 @@ async function processNextJob(executorId) {
         const claudeResult = await runClaude({cwd: worktreePath, prompt})
         stdout = claudeResult.stdout
         stderr = claudeResult.stderr
-        log(`claude completato (response ${stdout.length} char, stderr ${stderr.length} char)`)
+        responseText = claudeResult.text
+        inputTokens = claudeResult.inputTokens
+        outputTokens = claudeResult.outputTokens
+        totalCostUsd = claudeResult.totalCostUsd
+        log(`claude completato (response ${responseText.length} char, stderr ${stderr.length} char${totalCostUsd != null ? `, costo $${totalCostUsd.toFixed(4)}` : ''})`)
 
         const commitMessage = job.title ?? job.clickup?.title ?? `task ${taskId}`
         const commitSha = await commitAll(worktreePath, commitMessage)
 
         if (commitSha === null) {
-            const questionText = stdout.trim() || '(Claude non ha modificato file e non ha lasciato output)'
+            const questionText = responseText.trim() || '(Claude non ha modificato file e non ha lasciato output)'
             const completedAt = new Date()
             log('nessuna modifica ai file → ramo domande')
 
@@ -144,14 +154,17 @@ async function processNextJob(executorId) {
                 execution: {
                     outcome: 'question',
                     prompt,
-                    response: stdout,
+                    response: responseText,
                     stderr,
                     started_at: startedAt,
                     completed_at: completedAt,
                     duration_ms: completedAt - startedAt,
                     worktree_path: worktreePath,
                     logs,
-                    question_text: questionText
+                    question_text: questionText,
+                    input_tokens: inputTokens ?? undefined,
+                    output_tokens: outputTokens ?? undefined,
+                    cost_usd: totalCostUsd ?? undefined
                 }
             })
         } else {
@@ -179,12 +192,14 @@ async function processNextJob(executorId) {
                 log(`push diretto su ${branch}, nessuna merge request`)
             }
             const completedAt = new Date()
+            const estimatedMinutes = parseEstimatedMinutes(responseText)
+            if (estimatedMinutes) log(`stima tempo umano: ${estimatedMinutes} min`)
 
             await api.completeJob(job._id, {
                 execution: {
                     outcome: 'implementation',
                     prompt,
-                    response: stdout,
+                    response: responseText,
                     stderr,
                     started_at: startedAt,
                     completed_at: completedAt,
@@ -193,14 +208,19 @@ async function processNextJob(executorId) {
                     logs,
                     branch,
                     commit_sha: commitSha,
-                    pushed: true
+                    pushed: true,
+                    input_tokens: inputTokens ?? undefined,
+                    output_tokens: outputTokens ?? undefined,
+                    cost_usd: totalCostUsd ?? undefined
                 },
                 gitlab: {
                     branch,
                     commit_sha: commitSha,
                     pushed: true,
                     ...mergeRequest
-                }
+                },
+                minutes: estimatedMinutes ?? undefined,
+                cost_usd: totalCostUsd ?? undefined
             })
 
             if (directBranch) {
@@ -222,14 +242,17 @@ async function processNextJob(executorId) {
             execution: {
                 outcome: 'failed',
                 prompt,
-                response: stdout,
+                response: responseText || stdout,
                 stderr,
                 started_at: startedAt,
                 completed_at: completedAt,
                 duration_ms: completedAt - startedAt,
                 worktree_path: worktreePath,
                 logs,
-                error: err.message
+                error: err.message,
+                input_tokens: inputTokens ?? undefined,
+                output_tokens: outputTokens ?? undefined,
+                cost_usd: totalCostUsd ?? undefined
             }
         })
     } finally {

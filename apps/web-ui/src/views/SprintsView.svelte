@@ -12,6 +12,7 @@
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
     import EmptyState from '../components/EmptyState.svelte'
+    import BillableJobPicker from '../components/BillableJobPicker.svelte'
 
     let clients = $state([])
     let sprints = $state([])
@@ -27,31 +28,21 @@
     let loadingJobs = $state(false)
     let selected = $state(new Set())
     let form = $state(emptyForm())
-    // Diventa true quando l'utente tocca a mano il costo finale: smettiamo di
-    // sovrascriverlo con la somma delle stime dei job selezionati meno lo sconto.
-    let priceEdited = $state(false)
 
     function emptyForm() {
-        return {client_id: '', price: '', discount: '', delivery_date: '', status: 'in_lavorazione', note: ''}
+        return {client_id: '', discount: '', status: 'in_lavorazione', note: ''}
     }
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
     const clientOptions = $derived(clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'})))
     const canCreate = $derived(Boolean(form.client_id) && selected.size > 0)
 
-    // Somma delle stime dei job selezionati: totale di partenza dello sprint,
-    // prima di applicare lo sconto.
+    // Costo finale = somma delle stime dei job selezionati - sconto. Non e' un
+    // campo editabile: e' sempre derivato dai job effettivamente nello sprint.
     const selectedTotal = $derived(
         billableJobs.reduce((sum, j) => sum + (selected.has(j._id) ? Number(j.estimate) || 0 : 0), 0)
     )
-    const defaultPrice = $derived(Math.max(0, selectedTotal - (Number(form.discount) || 0)))
-
-    // Finché l'utente non modifica il costo finale a mano, lo teniamo allineato a
-    // somma stime - sconto.
-    $effect(() => {
-        if (priceEdited) return
-        form.price = defaultPrice ? String(defaultPrice) : ''
-    })
+    const finalPrice = $derived(Math.max(0, selectedTotal - (Number(form.discount) || 0)))
 
     async function load() {
         loading = true
@@ -71,7 +62,6 @@
 
     function openCreate() {
         form = emptyForm()
-        priceEdited = false
         if (filterClient) form.client_id = filterClient
         billableJobs = []
         selected = new Set()
@@ -82,7 +72,6 @@
     async function loadBillable() {
         selected = new Set()
         billableJobs = []
-        priceEdited = false
         form.discount = ''
         if (!form.client_id) return
         loadingJobs = true
@@ -97,13 +86,6 @@
         }
     }
 
-    function toggle(id) {
-        const next = new Set(selected)
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        selected = next
-    }
-
     async function createSprint(e) {
         e.preventDefault()
         if (!canCreate) return
@@ -112,13 +94,11 @@
             const r = await api.sprints.create({
                 client_id: form.client_id,
                 job_ids: [...selected],
-                price: form.price,
                 discount: form.discount,
-                delivery_date: form.delivery_date || undefined,
                 status: form.status,
                 note: form.note
             })
-            toast.success(`Sprint creato (costo finale ${formatCurrency(r.price)})`)
+            toast.success(`Sprint creato (costo finale ${formatCurrency(finalPrice)})`)
             modalOpen = false
             go(`/sprints/${r.sprint_id}`)
         } catch (e) {
@@ -214,17 +194,7 @@
                         Nessun job completato e non ancora fatturato per questo cliente.
                     </p>
                 {:else}
-                    <ul class="max-h-56 overflow-y-auto divide-y divide-slate-800 rounded-lg ring-1 ring-slate-800">
-                        {#each billableJobs as job (job._id)}
-                            <li class="flex items-center gap-3 px-3 py-2.5">
-                                <input type="checkbox" checked={selected.has(job._id)}
-                                       onchange={() => toggle(job._id)}
-                                       class="h-4 w-4 rounded border-slate-700 bg-slate-950 text-brand-500 focus:ring-brand-500"/>
-                                <span class="flex-1 min-w-0 text-sm text-slate-200 truncate">{job.title ?? job.clickup?.title ?? '(senza titolo)'}</span>
-                                <span class="text-xs text-slate-400 tabular-nums shrink-0">{formatCurrency(Number(job.estimate) || 0)}</span>
-                            </li>
-                        {/each}
-                    </ul>
+                    <BillableJobPicker jobs={billableJobs} bind:selected/>
                 {/if}
             </div>
 
@@ -233,14 +203,16 @@
                 <span class="text-slate-100 font-medium tabular-nums">{formatCurrency(selectedTotal)}</span>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-2 gap-3 items-end">
                 <Field label="Sconto (€)" type="number" step="0.01" min="0" bind:value={form.discount}
                        placeholder="0.00"/>
-                <Field label="Data consegna" type="date" bind:value={form.delivery_date}/>
+                <div>
+                    <span class="block text-sm font-medium text-slate-300 mb-1.5">Costo finale</span>
+                    <div class="rounded-lg bg-slate-950/50 ring-1 ring-slate-800 px-3 py-2 text-slate-100 font-medium tabular-nums">
+                        {formatCurrency(finalPrice)}
+                    </div>
+                </div>
             </div>
-            <Field label="Costo finale (€)" type="number" step="0.01" min="0" bind:value={form.price}
-                   placeholder="0.00" oninput={() => priceEdited = true}
-                   hint="Default: totale stime - sconto."/>
             <Select label="Stato" bind:value={form.status} options={SPRINT_STATUSES}/>
             <Field label="Nota" bind:value={form.note} multiline rows={2} placeholder="Nota opzionale sullo sprint"/>
         {/if}

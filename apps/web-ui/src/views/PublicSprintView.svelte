@@ -1,6 +1,6 @@
 <script>
     import {api} from '../lib/api.js'
-    import {formatDateOnly, formatCurrency} from '../lib/format.js'
+    import {formatCurrency} from '../lib/format.js'
     import Card from '../components/Card.svelte'
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
@@ -59,9 +59,6 @@
                                         {/if}
                                     </div>
                                     <div class="font-semibold text-slate-100">{sprint.note || 'Sprint'}</div>
-                                    {#if sprint.delivery_date}
-                                        <div class="text-xs text-slate-500 mt-0.5">consegna {formatDateOnly(sprint.delivery_date)}</div>
-                                    {/if}
                                 </div>
                                 <div class="text-xl font-bold text-slate-100 tabular-nums shrink-0">{formatCurrency(sprint.price)}</div>
                             </div>

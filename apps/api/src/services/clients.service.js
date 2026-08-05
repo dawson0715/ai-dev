@@ -27,6 +27,15 @@ function optionalText(value) {
     return String(value ?? '').trim()
 }
 
+// Tariffa oraria del cliente: usata per calcolare cost_eur (stima) dal tempo
+// che l'agente stima un umano impiegherebbe a svolgere il task. 0/assente =
+// nessun calcolo automatico, la Stima (€) resta manuale.
+function toHourlyRate(value) {
+    if (value === undefined || value === null || value === '') return 0
+    const n = Number(value)
+    return Number.isFinite(n) && n >= 0 ? n : 0
+}
+
 function normalizeNumbers(numbers) {
     const list = Array.isArray(numbers) ? numbers : [numbers]
     return [...new Set(list.map(normalizeNumber).filter(Boolean))]
@@ -78,13 +87,14 @@ export function clientsService(db) {
             return model.findByNumber(number)
         },
 
-        async create({external_id, name, email, numbers} = {}) {
+        async create({external_id, name, email, numbers, hourly_rate_eur} = {}) {
             const now = new Date()
             const doc = {
                 external_id: requiredText(external_id, 'external_id'),
                 name: requiredText(name, 'name'),
                 email: optionalText(email),
                 numbers: numbers === undefined ? [] : normalizeNumbers(numbers),
+                hourly_rate_eur: toHourlyRate(hourly_rate_eur),
                 token: genToken(),
                 created_at: now,
                 updated_at: now
@@ -105,6 +115,7 @@ export function clientsService(db) {
             if (fields.name !== undefined) allowed.name = requiredText(fields.name, 'name')
             if (fields.email !== undefined) allowed.email = optionalText(fields.email)
             if (fields.numbers !== undefined) allowed.numbers = normalizeNumbers(fields.numbers)
+            if (fields.hourly_rate_eur !== undefined) allowed.hourly_rate_eur = toHourlyRate(fields.hourly_rate_eur)
 
             if (Object.keys(allowed).length === 0) return client
             allowed.updated_at = new Date()

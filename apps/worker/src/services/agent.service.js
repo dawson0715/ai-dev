@@ -3,11 +3,30 @@ import {spawn} from 'child_process'
 const CLAUDE_BIN = process.env.CLAUDE_BIN ?? 'claude'
 const CLAUDE_TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS ?? 15 * 60 * 1000)
 
+// Con --output-format json il CLI stampa su stdout un unico oggetto JSON a fine
+// esecuzione (niente log di tool-use frammisti): {result, total_cost_usd, usage:
+// {input_tokens, output_tokens}, ...}. Se il parsing fallisce (output inatteso,
+// versione CLI diversa) degradiamo al testo grezzo: il worker continua a
+// funzionare, solo senza i dati strutturati (costo reale, token, stima minuti).
+function parseClaudeOutput(stdout) {
+    try {
+        const parsed = JSON.parse(stdout)
+        return {
+            text: typeof parsed.result === 'string' ? parsed.result : stdout,
+            totalCostUsd: typeof parsed.total_cost_usd === 'number' ? parsed.total_cost_usd : null,
+            inputTokens: parsed.usage?.input_tokens ?? null,
+            outputTokens: parsed.usage?.output_tokens ?? null
+        }
+    } catch {
+        return {text: stdout, totalCostUsd: null, inputTokens: null, outputTokens: null}
+    }
+}
+
 export async function runClaude({cwd, prompt}) {
     return new Promise((resolve, reject) => {
         const child = spawn(
             CLAUDE_BIN,
-            ['-p', prompt, '--permission-mode', 'bypassPermissions'],
+            ['-p', prompt, '--permission-mode', 'bypassPermissions', '--output-format', 'json'],
             {cwd, env: process.env}
         )
 
@@ -42,7 +61,7 @@ export async function runClaude({cwd, prompt}) {
                 reject(new Error(`claude exited with code ${code}: ${stderr}`))
                 return
             }
-            resolve({stdout, stderr})
+            resolve({stdout, stderr, ...parseClaudeOutput(stdout)})
         })
     })
 }
@@ -145,12 +164,26 @@ export function buildPrompt(job) {
         ``,
         `1. IMPLEMENTAZIONE: se il task è chiaro, modifica i file necessari nel repo corrente.`,
         `   NON eseguire commit, push o branch: ci pensa il worker dopo che esci.`,
+        `   Alla fine della tua risposta aggiungi una riga nel formato esatto`,
+        `   \`STIMA_MINUTI: <numero intero>\`, che rappresenta quanti minuti`,
+        `   impiegherebbe uno sviluppatore umano esperto a svolgere questo task`,
+        `   manualmente, senza assistenza AI. Usata per calcolare il costo del task.`,
         ``,
         `2. DOMANDE: se ti servono chiarimenti prima di poter procedere, NON modificare`,
         `   ALCUN file. Stampa SOLO su stdout le domande in italiano, una per riga o in`,
-        `   forma di elenco breve. ${questionsDestination}`,
+        `   forma di elenco breve. ${questionsDestination} Non aggiungere STIMA_MINUTI`,
+        `   in questo caso.`,
         ``,
         `Il worker distingue i due casi guardando se ci sono modifiche al repo:`,
         `nessuna modifica = ramo domande; almeno una modifica = ramo implementazione.`
     ].join('\n')
+}
+
+// Estrae la stima minuti dall'output di Claude (ultima occorrenza, se ce ne
+// fosse più di una). null se assente o non valida.
+export function parseEstimatedMinutes(stdout) {
+    const matches = [...String(stdout ?? '').matchAll(/STIMA_MINUTI:\s*(\d+)/gi)]
+    if (!matches.length) return null
+    const value = Number(matches[matches.length - 1][1])
+    return Number.isFinite(value) && value > 0 ? value : null
 }

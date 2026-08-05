@@ -10,6 +10,7 @@
     import Button from '../components/Button.svelte'
     import Modal from '../components/Modal.svelte'
     import Field from '../components/Field.svelte'
+    import BillableJobPicker from '../components/BillableJobPicker.svelte'
 
     let {sprintId} = $props()
 
@@ -19,18 +20,23 @@
     let confirmInvoice = $state(false)
     let invoicing = $state(false)
     let editOpen = $state(false)
-    let editForm = $state({price: '', discount: '', note: ''})
+    let editForm = $state({discount: '', note: ''})
     let saving = $state(false)
     let confirmInvoiceUpdate = $state(false)
     let updatingInvoice = $state(false)
     let confirmClose = $state(false)
     let closing = $state(false)
 
+    // Aggiunta job a sprint esistente
+    let addOpen = $state(false)
+    let addingJobs = $state(false)
+    let addBillableJobs = $state([])
+    let loadingAddJobs = $state(false)
+    let addSelected = $state(new Set())
+
     const publicUrl = $derived(
         client?.token ? `${window.location.origin}${window.location.pathname}#/public/sprint/${client.token}` : ''
     )
-    // Somma delle stime dei job dello sprint, prima dello sconto.
-    const subtotal = $derived((sprint?.jobs ?? []).reduce((sum, j) => sum + (j.estimate ?? 0), 0))
     // Job dello sprint raggruppati per progetto (i job di supporto/manuali senza
     // progetto finiscono in un gruppo residuo), nell'ordine di prima comparsa.
     const jobGroups = $derived.by(() => {
@@ -74,7 +80,6 @@
 
     function openEdit() {
         editForm = {
-            price: sprint?.price != null ? String(sprint.price) : '',
             discount: sprint?.discount != null ? String(sprint.discount) : '',
             note: sprint?.note ?? ''
         }
@@ -85,7 +90,7 @@
         e.preventDefault()
         saving = true
         try {
-            await api.sprints.update(sprintId, {price: editForm.price, discount: editForm.discount, note: editForm.note})
+            await api.sprints.update(sprintId, {discount: editForm.discount, note: editForm.note})
             toast.success(sprint.invoice_id ? 'Sprint aggiornato — ricordati di aggiornare la fattura' : 'Sprint aggiornato')
             editOpen = false
             await load()
@@ -134,6 +139,37 @@
         }
     }
 
+    async function openAddJobs() {
+        addSelected = new Set()
+        addBillableJobs = []
+        addOpen = true
+        if (!sprint?.client_id) return
+        loadingAddJobs = true
+        try {
+            addBillableJobs = await api.jobs.billable(sprint.client_id)
+        } catch (e) {
+            toast.error(`Errore caricamento job: ${e.message}`)
+        } finally {
+            loadingAddJobs = false
+        }
+    }
+
+    async function submitAddJobs(e) {
+        e.preventDefault()
+        if (!addSelected.size) return
+        addingJobs = true
+        try {
+            await api.sprints.addJobs(sprintId, [...addSelected])
+            toast.success(`${addSelected.size} job aggiunti allo sprint`)
+            addOpen = false
+            await load()
+        } catch (e) {
+            toast.error(`Aggiunta job fallita: ${e.message}`)
+        } finally {
+            addingJobs = false
+        }
+    }
+
     $effect(() => {
         sprintId
         load()
@@ -157,7 +193,7 @@
         </div>
         <div class="flex flex-wrap items-center gap-2 shrink-0">
             {#if !sprint.archived}
-                <Button size="sm" variant="ghost" onclick={openEdit}>Modifica</Button>
+                <Button size="sm" variant="danger" onclick={openEdit}>Modifica</Button>
             {/if}
             {#if sprint.archived}
                 <span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-slate-700/40 text-slate-300 ring-1 ring-inset ring-slate-600/40">
@@ -168,38 +204,37 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                     Fatturato{sprint.invoice_number ? ` · n. ${sprint.invoice_number}${sprint.invoice_year ? `/${sprint.invoice_year}` : ''}` : ''}
                 </span>
-                <Button size="sm" variant="secondary" onclick={() => confirmInvoiceUpdate = true}>Aggiorna fattura</Button>
+                <Button size="sm" variant="danger" onclick={() => confirmInvoiceUpdate = true}>Aggiorna fattura</Button>
             {:else}
-                <Button size="sm" variant="secondary" onclick={() => confirmInvoice = true}>Genera fattura</Button>
+                <Button size="sm" variant="danger" onclick={() => confirmInvoice = true}>Genera fattura</Button>
             {/if}
             {#if !sprint.archived}
-                <Button size="sm" variant="ghost" onclick={() => confirmClose = true}>Chiudi sprint</Button>
+                <Button size="sm" variant="danger" onclick={() => confirmClose = true}>Chiudi sprint</Button>
             {/if}
-            <StatusBadge status={sprint.status}/>
         </div>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <Card padding="sm">
-            <div class="text-xs uppercase tracking-wider text-slate-500">Totale stime</div>
-            <div class="text-2xl font-bold mt-1 text-slate-100 tabular-nums">{formatCurrency(subtotal)}</div>
+            <div class="text-xs uppercase tracking-wider text-slate-500">Job</div>
+            <div class="text-2xl font-bold mt-1 text-slate-100">{sprint.jobs?.length ?? 0}</div>
         </Card>
         <Card padding="sm">
-            <div class="text-xs uppercase tracking-wider text-slate-500">Sconto</div>
-            <div class="text-2xl font-bold mt-1 text-slate-100 tabular-nums">{sprint.discount ? `-${formatCurrency(sprint.discount)}` : '—'}</div>
+            <div class="text-xs uppercase tracking-wider text-slate-500">Data inizio</div>
+            <div class="text-2xl font-bold mt-1 text-slate-100 tabular-nums">{sprint.start_date ? formatDateOnly(sprint.start_date) : '—'}</div>
+        </Card>
+        <Card padding="sm">
+            <div class="text-xs uppercase tracking-wider text-slate-500 mb-1.5">Stato</div>
+            <StatusBadge status={sprint.status}/>
         </Card>
         <Card padding="sm">
             <div class="text-xs uppercase tracking-wider text-slate-500">Costo finale</div>
             <div class="text-2xl font-bold mt-1 text-emerald-300 tabular-nums">{formatCurrency(sprint.price)}</div>
         </Card>
-        <Card padding="sm">
-            <div class="text-xs uppercase tracking-wider text-slate-500">Job</div>
-            <div class="text-2xl font-bold mt-1 text-slate-100">{sprint.jobs?.length ?? 0}</div>
-        </Card>
     </div>
 
-    {#if sprint.delivery_date}
-        <p class="text-sm text-slate-500 mb-6">Consegna: {formatDateOnly(sprint.delivery_date)}</p>
+    {#if sprint.archived && sprint.end_date}
+        <p class="text-sm text-slate-500 mb-6">Fine: {formatDateOnly(sprint.end_date)}</p>
     {/if}
 
     {#if publicUrl}
@@ -214,7 +249,12 @@
     {/if}
 
     <Card padding="none">
-        <div class="px-4 sm:px-6 py-4 border-b border-slate-800 font-semibold text-slate-100">Job dello sprint</div>
+        <div class="px-4 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+            <span class="font-semibold text-slate-100">Job dello sprint</span>
+            {#if !sprint.archived}
+                <Button size="sm" variant="secondary" onclick={openAddJobs}>Aggiungi job</Button>
+            {/if}
+        </div>
         {#if !sprint.jobs?.length}
             <EmptyState title="Nessun job"/>
         {:else}
@@ -258,16 +298,14 @@
         </p>
         {#snippet footer()}
             <Button variant="ghost" onclick={() => confirmInvoice = false}>Annulla</Button>
-            <Button onclick={generateInvoice} loading={invoicing}>Genera fattura</Button>
+            <Button variant="danger" onclick={generateInvoice} loading={invoicing}>Genera fattura</Button>
         {/snippet}
     </Modal>
 
     <Modal open={editOpen} title="Modifica sprint" onclose={() => editOpen = false}>
         <form onsubmit={saveEdit} class="space-y-4">
-            <div class="grid grid-cols-2 gap-3">
-                <Field label="Sconto (€)" type="number" step="0.01" min="0" bind:value={editForm.discount} placeholder="0.00"/>
-                <Field label="Costo finale (€)" type="number" step="0.01" min="0" bind:value={editForm.price} placeholder="0.00"/>
-            </div>
+            <Field label="Sconto (€)" type="number" step="0.01" min="0" bind:value={editForm.discount} placeholder="0.00"
+                   hint="Il costo finale resta la somma delle stime dei job dello sprint, meno lo sconto."/>
             <Field label="Nota" bind:value={editForm.note} multiline rows={3} placeholder="Nota dello sprint (diventa la descrizione in fattura)"/>
             {#if sprint.invoice_id}
                 <p class="text-xs text-amber-300/90">Lo sprint è già fatturato: dopo aver salvato, usa "Aggiorna fattura" per propagare le modifiche al backoffice.</p>
@@ -287,7 +325,7 @@
         </p>
         {#snippet footer()}
             <Button variant="ghost" onclick={() => confirmInvoiceUpdate = false}>Annulla</Button>
-            <Button onclick={syncInvoice} loading={updatingInvoice}>Aggiorna fattura</Button>
+            <Button variant="danger" onclick={syncInvoice} loading={updatingInvoice}>Aggiorna fattura</Button>
         {/snippet}
     </Modal>
 
@@ -300,5 +338,27 @@
             <Button variant="ghost" onclick={() => confirmClose = false}>Annulla</Button>
             <Button variant="danger" onclick={closeSprint} loading={closing}>Chiudi sprint</Button>
         {/snippet}
+    </Modal>
+
+    <Modal open={addOpen} title="Aggiungi job allo sprint" onclose={() => addOpen = false}>
+        <form onsubmit={submitAddJobs} class="space-y-4">
+            {#if loadingAddJobs}
+                <div class="flex justify-center py-6"><Spinner size={24}/></div>
+            {:else if addBillableJobs.length === 0}
+                <p class="text-sm text-slate-500 bg-slate-950/50 rounded-lg ring-1 ring-slate-800 px-3 py-4">
+                    Nessun altro job completato e non ancora assegnato a uno sprint per questo cliente.
+                </p>
+            {:else}
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="block text-sm font-medium text-slate-300">Job disponibili</span>
+                    {#if addSelected.size > 0}<span class="text-xs text-brand-300">{addSelected.size} selezionati</span>{/if}
+                </div>
+                <BillableJobPicker jobs={addBillableJobs} bind:selected={addSelected}/>
+            {/if}
+            <div class="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onclick={() => addOpen = false}>Annulla</Button>
+                <Button type="submit" loading={addingJobs} disabled={addingJobs || !addSelected.size}>Aggiungi</Button>
+            </div>
+        </form>
     </Modal>
 {/if}

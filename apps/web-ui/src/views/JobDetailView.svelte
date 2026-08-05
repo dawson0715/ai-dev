@@ -17,6 +17,7 @@
     let confirmFail = $state(false)
     let estimateInput = $state('')
     let savingEstimate = $state(false)
+    let recalculating = $state(false)
     let commentText = $state('')
     let savingComment = $state(false)
     let editingText = $state(false)
@@ -50,6 +51,19 @@
             toast.error(`Salvataggio stima fallito: ${e.message}`)
         } finally {
             savingEstimate = false
+        }
+    }
+
+    async function recalculateEstimate() {
+        recalculating = true
+        try {
+            const r = await api.jobs.recalculateEstimate(jobId)
+            toast.success(`Stima ricalcolata: ${formatCurrency(r.estimate)}`)
+            await load()
+        } catch (e) {
+            toast.error(`Ricalcolo fallito: ${e.message}`)
+        } finally {
+            recalculating = false
         }
     }
 
@@ -161,6 +175,12 @@
                 {:else}
                     <span class="text-xs text-slate-400 px-1.5 py-0.5 rounded ring-1 ring-inset ring-slate-700">manuale</span>
                 {/if}
+                {#if job.sprint_id}
+                    <a href={`#/sprints/${job.sprint_id}`}
+                       class="text-xs px-1.5 py-0.5 rounded ring-1 ring-inset ring-brand-500/30 text-brand-300 hover:text-brand-200 hover:ring-brand-500/50 transition">
+                        In sprint
+                    </a>
+                {/if}
             </div>
             <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">{job.title ?? job.clickup?.title ?? '(senza titolo)'}</h1>
             {#if job.clickup?.url}
@@ -271,6 +291,17 @@
                 Salva
             </Button>
         </div>
+        {#if job.minutes}
+            <div class="flex items-center justify-between gap-3 mt-2">
+                <p class="text-xs text-slate-500">
+                    Pre-compilata dall'agente: ~{job.minutes} min di lavoro umano equivalente{job.estimate ? `, alla tariffa oraria del cliente` : ''}.
+                </p>
+                <Button size="sm" variant="ghost" onclick={recalculateEstimate} loading={recalculating}>
+                    Ricalcola
+                </Button>
+            </div>
+            <p class="text-xs text-slate-600 mt-1">Utile se hai cambiato la tariffa oraria del cliente dopo il completamento.</p>
+        {/if}
     </Card>
 
     {#if job.gitlab}
