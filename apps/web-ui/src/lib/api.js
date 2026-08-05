@@ -46,6 +46,7 @@ export const api = {
         create: (projectId, data) => request(`/projects/${projectId}/jobs`, {method: 'POST', body: data}),
         retry: (id) => request(`/jobs/${id}/retry`, {method: 'POST'}),
         update: (id, data) => request(`/jobs/${id}`, {method: 'PATCH', body: data}),
+        updateDetails: (id, data) => request(`/jobs/${id}/details`, {method: 'PATCH', body: data}),
         recalculateEstimate: (id) => request(`/jobs/${id}/recalculate-estimate`, {method: 'POST'}),
         fail: (id, body = {}) => request(`/jobs/${id}/fail`, {method: 'POST', body}),
         requestMerge: (id) => request(`/jobs/${id}/merge`, {method: 'POST'}),

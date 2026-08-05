@@ -1,6 +1,6 @@
 <script>
     import {api} from '../lib/api.js'
-    import {formatCurrency} from '../lib/format.js'
+    import {formatCurrency, formatDateDash} from '../lib/format.js'
     import Card from '../components/Card.svelte'
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
@@ -69,6 +69,9 @@
                                         <li class="px-4 sm:px-6 py-2.5 text-sm text-slate-300 flex items-center gap-2">
                                             <svg class="text-slate-600 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
                                             <span class="truncate flex-1">{job.title}</span>
+                                            {#if job.date}
+                                                <span class="text-slate-500 text-xs tabular-nums shrink-0">{formatDateDash(job.date)}</span>
+                                            {/if}
                                             <span class="text-slate-400 tabular-nums shrink-0">{formatCurrency(job.price)}</span>
                                         </li>
                                     {/each}

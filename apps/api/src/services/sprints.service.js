@@ -370,7 +370,8 @@ export function sprintsService(db) {
                         groups.get(key).push({
                             title: j.title ?? j.clickup?.title ?? '(senza titolo)',
                             status: j.status,
-                            price: j.estimate ?? 0
+                            price: j.estimate ?? 0,
+                            date: j.implemented_at ?? j.completed_at ?? null
                         })
                     }
                     const jobGroups = [...groups.entries()].map(([name, jobList]) => ({

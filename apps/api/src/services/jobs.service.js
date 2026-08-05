@@ -249,6 +249,45 @@ export function jobsService(db) {
             return jobs.update(id, clean)
         },
 
+        // Modifica i dettagli "billing" del job (titolo mostrato, data di
+        // completamento, ore lavorate, stima costo): a differenza di update(),
+        // non tocca mai il legame ClickUp ne' lo stato del job. Pensato per
+        // correzioni post-hoc (es. su job gia' completati/merged) senza
+        // rimetterli in coda.
+        async updateDetails(id, {title, date, minutes, estimate}) {
+            const job = await jobs.findById(id)
+            if (!job) throw notFound('job not found')
+
+            const clean = {}
+
+            if (title !== undefined) {
+                const cleanTitle = (title ?? '').trim()
+                if (!cleanTitle) throw badRequest('title cannot be empty')
+                clean.title = cleanTitle
+            }
+
+            if (minutes !== undefined) {
+                const n = Number(minutes)
+                if (!Number.isFinite(n) || n < 0) throw badRequest('invalid minutes')
+                clean.minutes = n
+            }
+
+            if (estimate !== undefined) clean.estimate = toEstimate(estimate)
+
+            if (date !== undefined) {
+                const d = date ? new Date(date) : null
+                if (date && Number.isNaN(d?.getTime())) throw badRequest('invalid date')
+                // Scrive sul campo data che il job usa gia' per mostrare "Implementato"
+                // (implemented_at per i job lavorati dal worker, completed_at per i
+                // job di supporto/manuali), cosi' la modifica si riflette ovunque.
+                clean[job.implemented_at ? 'implemented_at' : 'completed_at'] = d
+            }
+
+            if (!Object.keys(clean).length) return {ok: true}
+            await jobs.update(id, clean)
+            return {ok: true}
+        },
+
         // Ricalcola la Stima (€) dal tempo salvato (job.minutes) e dalla tariffa
         // oraria ATTUALE del cliente: utile dopo aver cambiato la tariffa, per
         // riallineare job già completati senza dover reimpostare i minuti.

@@ -49,6 +49,7 @@ export async function registerRoutes(app, db) {
     app.get('/jobs/:id', jobsCtl.get)
     app.post('/jobs/claim', jobsCtl.claim)
     app.patch('/jobs/:id', jobsCtl.update)
+    app.patch('/jobs/:id/details', jobsCtl.updateDetails)
     app.post('/jobs/:id/recalculate-estimate', jobsCtl.recalculateEstimate)
     app.post('/jobs/:id/comments', jobsCtl.addComment)
     app.post('/jobs/:id/retry', jobsCtl.retry)

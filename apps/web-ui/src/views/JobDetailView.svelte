@@ -25,6 +25,11 @@
     let editDescription = $state('')
     let savingText = $state(false)
 
+    // Modifica dettagli job: titolo, data implementazione, ore, stima costo.
+    let detailsOpen = $state(false)
+    let detailsForm = $state({title: '', date: '', hours: '', estimate: ''})
+    let savingDetails = $state(false)
+
     async function load() {
         loading = true
         try {
@@ -78,6 +83,44 @@
             toast.error(`Aggiunta commento fallita: ${e.message}`)
         } finally {
             savingComment = false
+        }
+    }
+
+    function toDateInputValue(value) {
+        if (!value) return ''
+        const d = new Date(value)
+        if (isNaN(d.getTime())) return ''
+        return d.toISOString().slice(0, 10)
+    }
+
+    function openDetails() {
+        detailsForm = {
+            title: job?.title ?? job?.clickup?.title ?? '',
+            date: toDateInputValue(job?.implemented_at ?? job?.completed_at),
+            hours: job?.minutes != null ? String(Math.round((job.minutes / 60) * 100) / 100) : '',
+            estimate: job?.estimate != null ? String(job.estimate) : ''
+        }
+        detailsOpen = true
+    }
+
+    async function saveDetails(e) {
+        e.preventDefault()
+        savingDetails = true
+        try {
+            const hours = Number(detailsForm.hours)
+            await api.jobs.updateDetails(jobId, {
+                title: detailsForm.title,
+                date: detailsForm.date || null,
+                minutes: Number.isFinite(hours) ? Math.round(hours * 60) : 0,
+                estimate: detailsForm.estimate
+            })
+            toast.success('Job aggiornato')
+            detailsOpen = false
+            await load()
+        } catch (e) {
+            toast.error(`Aggiornamento fallito: ${e.message}`)
+        } finally {
+            savingDetails = false
         }
     }
 
@@ -191,6 +234,9 @@
             {/if}
         </div>
         <div class="flex flex-wrap gap-2">
+            <Button variant="secondary" onclick={openDetails}>
+                Modifica
+            </Button>
             <Button variant="secondary" onclick={retry} loading={actionLoading} disabled={actionLoading || ['pending', 'running', 'completed', 'merged'].includes(job.status)}>
                 Retry
             </Button>
@@ -200,7 +246,7 @@
         </div>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-3 mb-6">
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-5 mb-6">
         <Card padding="sm">
             <div class="text-xs uppercase tracking-wider text-slate-500">Creato</div>
             <div class="mt-1 text-sm text-slate-200">{formatDate(job.created_at)}</div>
@@ -213,6 +259,14 @@
         <Card padding="sm">
             <div class="text-xs uppercase tracking-wider text-slate-500">Implementato</div>
             <div class="mt-1 text-sm text-slate-200">{formatDate(job.implemented_at ?? job.completed_at)}</div>
+        </Card>
+        <Card padding="sm">
+            <div class="text-xs uppercase tracking-wider text-slate-500">Ore</div>
+            <div class="mt-1 text-sm text-slate-200 tabular-nums">{job.minutes ? `${Math.round((job.minutes / 60) * 100) / 100} h` : '—'}</div>
+        </Card>
+        <Card padding="sm">
+            <div class="text-xs uppercase tracking-wider text-slate-500">Stima costo</div>
+            <div class="mt-1 text-sm text-slate-200 tabular-nums">{job.estimate ? formatCurrency(job.estimate) : '—'}</div>
         </Card>
     </div>
 
@@ -407,4 +461,18 @@
         <Button variant="ghost" onclick={() => confirmFail = false}>Annulla</Button>
         <Button variant="danger" onclick={markFailed} loading={actionLoading}>Marca failed</Button>
     {/snippet}
+</Modal>
+
+<Modal open={detailsOpen} title="Modifica job" onclose={() => detailsOpen = false}>
+    <form onsubmit={saveDetails} class="space-y-4">
+        <Field label="Titolo" bind:value={detailsForm.title} required/>
+        <Field label="Data implementazione" type="date" bind:value={detailsForm.date}/>
+        <Field label="Ore" type="number" step="0.25" min="0" bind:value={detailsForm.hours} placeholder="0"/>
+        <Field label="Stima costo (€)" type="number" step="0.01" min="0" bind:value={detailsForm.estimate} placeholder="0.00"/>
+        <p class="text-xs text-slate-500">Modifica solo i dati mostrati qui: non tocca lo stato del job né il legame con ClickUp.</p>
+        <div class="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onclick={() => detailsOpen = false}>Annulla</Button>
+            <Button type="submit" loading={savingDetails} disabled={savingDetails || !detailsForm.title.trim()}>Salva</Button>
+        </div>
+    </form>
 </Modal>

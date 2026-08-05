@@ -50,6 +50,16 @@ export function formatDateOnly(value) {
     return d.toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: 'numeric'})
 }
 
+// DD-MM-YYYY con trattini (a differenza di formatDateOnly, che usa gli slash it-IT).
+export function formatDateDash(value) {
+    if (!value) return '—'
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return '—'
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    return `${dd}-${mm}-${d.getFullYear()}`
+}
+
 export function formatCurrency(value) {
     const n = Number(value)
     if (!Number.isFinite(n)) return '—'
