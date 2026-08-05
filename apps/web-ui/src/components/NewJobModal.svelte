@@ -1,6 +1,7 @@
 <script>
     import {api} from '../lib/api.js'
     import {toast} from '../lib/toast.svelte.js'
+    import {statusLabel} from '../lib/format.js'
     import Button from './Button.svelte'
     import Modal from './Modal.svelte'
     import Field from './Field.svelte'
@@ -10,13 +11,15 @@
     // (vista globale /jobs).
     let {open = false, projects = [], projectId = undefined, onclose, oncreated} = $props()
 
+    const statusOptions = ['pending', 'running', 'awaiting_merge', 'awaiting_clarification', 'completed', 'merged', 'failed']
+
     let submitting = $state(false)
-    let form = $state({project_id: '', title: '', description: '', estimate: ''})
+    let form = $state({project_id: '', title: '', description: '', estimate: '', status: 'pending'})
 
     const selectClass = 'block w-full rounded-lg bg-slate-950/50 ring-1 ring-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 transition'
 
     $effect(() => {
-        if (open) form = {project_id: projectId ?? projects[0]?._id ?? '', title: '', description: '', estimate: ''}
+        if (open) form = {project_id: projectId ?? projects[0]?._id ?? '', title: '', description: '', estimate: '', status: 'pending'}
     })
 
     const fixedProjectName = $derived(projects.find((p) => p._id === projectId)?.name ?? '(progetto corrente)')
@@ -63,6 +66,15 @@
                hint="Diventa il prompt per l'agente. Nessuna card ClickUp viene creata o aggiornata."/>
         <Field label="Stima (€)" type="number" step="0.01" min="0" bind:value={form.estimate}
                placeholder="0.00" hint="Forfait stimato del task, sommato nel forfait dello sprint."/>
+        <label class="block">
+            <span class="block text-sm font-medium text-slate-300 mb-1.5">Stato</span>
+            <select bind:value={form.status} class={selectClass}>
+                {#each statusOptions as s (s)}
+                    <option value={s}>{statusLabel(s)}</option>
+                {/each}
+            </select>
+            <span class="block text-xs text-slate-500 mt-1">Di norma resta "pending"; il worker lo prende in carico dalla coda.</span>
+        </label>
         <div class="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onclick={() => onclose?.()}>Annulla</Button>
             <Button type="submit" loading={submitting} disabled={submitting}>Crea job</Button>

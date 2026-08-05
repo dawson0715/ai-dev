@@ -6,6 +6,8 @@ import {listTodoTasks, postComment, setTaskStatus} from './clickup.service.js'
 import {listOpenIssues} from './gitlabIssues.service.js'
 import {createNextLiquibaseId} from '../liquibase.js'
 
+const MANUAL_JOB_STATUSES = ['pending', 'running', 'awaiting_merge', 'awaiting_clarification', 'completed', 'merged', 'failed']
+
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN
 const CLICKUP_QUESTION_STATUS = process.env.CLICKUP_QUESTION_STATUS ?? 'pending'
 const CLICKUP_INPROGRESS_STATUS = process.env.CLICKUP_INPROGRESS_STATUS ?? 'in progress'
@@ -132,12 +134,16 @@ export function jobsService(db) {
             return {ok: true}
         },
 
-        async createManual(projectId, {title, description, estimate, depends_on_job_ids}) {
+        async createManual(projectId, {title, description, estimate, depends_on_job_ids, status}) {
             const project = await projects.findById(projectId)
             if (!project) throw notFound('project not found')
 
             const dependencyIds = toJobIds(depends_on_job_ids)
             await validateDependencies(projectId, dependencyIds)
+
+            if (status !== undefined && !MANUAL_JOB_STATUSES.includes(status)) {
+                throw badRequest(`invalid status: ${status}`)
+            }
 
             const cleanTitle = (title ?? '').trim() || 'Job manuale'
             const res = await jobs.insertManual({
@@ -145,7 +151,8 @@ export function jobsService(db) {
                 title: cleanTitle,
                 description: (description ?? '').trim(),
                 estimate: toEstimate(estimate),
-                dependsOnJobIds: dependencyIds
+                dependsOnJobIds: dependencyIds,
+                status: status ?? 'pending'
             })
             return {ok: true, job_id: res.insertedId.toString()}
         },

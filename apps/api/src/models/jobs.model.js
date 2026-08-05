@@ -56,13 +56,13 @@ export function jobsModel(db) {
             await collection.createIndex({status: 1, created_at: 1})
         },
 
-        insertManual({projectId, title, description, estimate = 0, dependsOnJobIds = []}) {
+        insertManual({projectId, title, description, estimate = 0, dependsOnJobIds = [], status = 'pending'}) {
             const _id = new ObjectId()
             const createdAt = new Date()
             return collection.insertOne({
                 _id,
                 project_id: projectId,
-                status: 'pending',
+                status,
                 source: 'manual',
                 title,
                 description,
