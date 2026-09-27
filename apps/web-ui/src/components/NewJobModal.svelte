@@ -9,7 +9,8 @@
     // Se projectId è passato, il progetto è fisso (niente picker): usato dalla
     // pagina di un progetto. Altrimenti va passato `projects` per il picker
     // (vista globale /jobs).
-    let {open = false, projects = [], projectId = undefined, onclose, oncreated} = $props()
+    // `initial` precompila titolo/descrizione (es. bozza generata da una chat).
+    let {open = false, projects = [], projectId = undefined, initial = null, onclose, oncreated} = $props()
 
     const statusOptions = ['pending', 'running', 'awaiting_merge', 'awaiting_clarification', 'completed', 'merged', 'failed']
 
@@ -19,7 +20,13 @@
     const selectClass = 'block w-full rounded-lg bg-slate-950/50 ring-1 ring-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 transition'
 
     $effect(() => {
-        if (open) form = {project_id: projectId ?? projects[0]?._id ?? '', title: '', description: '', estimate: '', status: 'pending'}
+        if (open) form = {
+            project_id: projectId ?? projects[0]?._id ?? '',
+            title: initial?.title ?? '',
+            description: initial?.description ?? '',
+            estimate: '',
+            status: 'pending'
+        }
     })
 
     const fixedProjectName = $derived(projects.find((p) => p._id === projectId)?.name ?? '(progetto corrente)')
@@ -29,10 +36,10 @@
         submitting = true
         try {
             const {project_id, ...data} = form
-            await api.jobs.create(project_id, data)
+            const created = await api.jobs.create(project_id, data)
             toast.success('Job creato e messo in coda')
             onclose?.()
-            await oncreated?.()
+            await oncreated?.(created)
         } catch (err) {
             toast.error(`Creazione fallita: ${err.message}`)
         } finally {

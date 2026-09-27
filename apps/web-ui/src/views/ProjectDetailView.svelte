@@ -2,7 +2,7 @@
     import {api} from '../lib/api.js'
     import {toast} from '../lib/toast.svelte.js'
     import {formatDate, formatRelative} from '../lib/format.js'
-    import {go} from '../lib/router.svelte.js'
+    import {go, router} from '../lib/router.svelte.js'
     import Button from '../components/Button.svelte'
     import Card from '../components/Card.svelte'
     import StatusBadge from '../components/StatusBadge.svelte'
@@ -12,6 +12,7 @@
     import Field from '../components/Field.svelte'
     import Select from '../components/Select.svelte'
     import NewJobModal from '../components/NewJobModal.svelte'
+    import ChatDrawer from '../components/ChatDrawer.svelte'
     import {serviceLabel} from '../lib/serviceName.js'
     import {TASK_SOURCES} from '../lib/taskSource.js'
 
@@ -38,6 +39,10 @@
     })
     let saving = $state(false)
     let archiving = $state(false)
+
+    // Pannello chat e conversazione aperta vivono nei query param: link condivisibili.
+    const chatOpen = $derived(router.current.params.ask === '1')
+    const chatId = $derived(router.current.params.chat ?? '')
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
     const clientOptions = $derived([
@@ -178,6 +183,10 @@
                     {project.task_source === 'gitlab_issues' ? 'Sync GitLab issues' : 'Sync ClickUp'}
                 </Button>
             {/if}
+            <Button variant="secondary" onclick={() => router.setParams({ask: '1'})}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Chiedi all'agente
+            </Button>
             <Button variant="secondary" onclick={() => jobModalOpen = true}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
                 Nuovo job
@@ -247,6 +256,10 @@
         {/if}
     </Card>
 {/if}
+
+<ChatDrawer open={chatOpen} onclose={() => router.setParams({})}
+            subtitle={project?.name ?? ''} {projectId} projectName={project?.name ?? ''} {chatId}
+            onselect={(id) => router.setParams({ask: '1', chat: id})}/>
 
 <Modal open={editOpen} title="Modifica progetto" onclose={() => editOpen = false}>
     <form onsubmit={save} class="space-y-4">

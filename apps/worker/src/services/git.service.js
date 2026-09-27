@@ -91,6 +91,7 @@ export async function ensureClone(project, workspace) {
     if (await isGitRepo(repoPath)) {
         const origin = await currentOriginUrl(repoPath)
         if (origin && normalizeRepoUrl(origin) === normalizeRepoUrl(project.gitlab.url)) {
+            await detachHead(repoPath)
             return repoPath
         }
         // Il repo GitLab associato al progetto è cambiato (URL aggiornato dopo la
@@ -105,8 +106,19 @@ export async function ensureClone(project, workspace) {
     const creds = credentialsForServiceAccount(project.gitlab.service_account)
     const authedUrl = injectCredentials(project.gitlab.url, creds)
     await simpleGit().clone(authedUrl, repoPath)
+    await detachHead(repoPath)
 
     return repoPath
+}
+
+// Il checkout principale del clone in cache resta in detached HEAD: un branch
+// checked out qui non potrebbe essere usato da un worktree (es. i job con
+// direct_branch lavorano proprio sul branch di default) e il checkout serve
+// alle chat, che lo riallineano con alignCheckout.
+async function detachHead(repoPath) {
+    const git = simpleGit(repoPath)
+    const current = (await git.raw(['branch', '--show-current'])).trim()
+    if (current) await git.raw(['checkout', '--quiet', '--detach'])
 }
 
 export async function createWorktree(repoPath, worktreePath, branch, baseBranch) {
@@ -125,6 +137,111 @@ export async function createWorktree(repoPath, worktreePath, branch, baseBranch)
     } else {
         await git.raw(['worktree', 'add', '-b', branch, worktreePath, `origin/${baseBranch}`])
     }
+}
+
+// Primo ref esistente di `refs` (in ordine di preferenza), con il suo sha.
+export async function resolveRef(repoPath, refs) {
+    const git = simpleGit(repoPath)
+    for (const ref of refs) {
+        // Con --quiet un ref inesistente esce con codice 1 senza stderr e
+        // simple-git non lancia: conta solo un output non vuoto.
+        const sha = (await git.raw(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => '')).trim()
+        if (sha) return {ref, sha}
+    }
+    throw new Error(`nessuno dei ref esiste: ${refs.join(', ')}`)
+}
+
+// Porta un checkout (principale o worktree) in detached HEAD su `sha`, solo
+// se HEAD è diverso, è su un branch o ci sono modifiche locali: altrimenti
+// non tocca nulla.
+export async function alignCheckout(dir, sha) {
+    const git = simpleGit(dir)
+    const head = (await git.revparse(['HEAD'])).trim()
+    const onBranch = (await git.raw(['branch', '--show-current'])).trim() !== ''
+    const dirty = (await git.raw(['status', '--porcelain'])).trim() !== ''
+    if (head === sha && !onBranch && !dirty) return false
+    await git.raw(['checkout', '--quiet', '--detach', '--force', sha])
+    await git.raw(['clean', '-fdq'])
+    return true
+}
+
+// Worktree detached di sola lettura per una chat su un branch diverso dal
+// default (es. branch di un job), riusato tra le domande: se esiste viene solo
+// riallineato, altrimenti creato.
+export async function prepareReadWorktree(repoPath, worktreePath, sha) {
+    const git = simpleGit(repoPath)
+
+    if (await isGitRepo(worktreePath)) {
+        try {
+            await alignCheckout(worktreePath, sha)
+            await touch(worktreePath)
+            return
+        } catch (err) {
+            // Worktree corrotto o orfano: lo ricreo da zero.
+            console.error(`worktree ${worktreePath} non riusabile, lo ricreo:`, err.message)
+            await git.raw(['worktree', 'remove', '--force', worktreePath]).catch(() => {})
+            await fs.rm(worktreePath, {recursive: true, force: true})
+        }
+    }
+
+    await fs.mkdir(path.dirname(worktreePath), {recursive: true})
+    // Una directory cancellata a mano resta registrata e bloccherebbe l'add.
+    await git.raw(['worktree', 'prune'])
+    await git.raw(['worktree', 'add', '--detach', worktreePath, sha])
+}
+
+// Il fetch può fallire se un job sullo stesso repo sta facendo fetch in
+// parallelo (lock sui ref): in quel caso si lavora sull'ultimo stato noto.
+export async function fetchOrigin(repoPath) {
+    try {
+        await simpleGit(repoPath).fetch('origin', ['--prune'])
+        return true
+    } catch (err) {
+        console.error(`fetch failed for ${repoPath}, uso lo stato locale:`, err.message)
+        return false
+    }
+}
+
+// mtime della directory = ultimo utilizzo, usato dallo sweep dei worktree inattivi.
+async function touch(p) {
+    const now = new Date()
+    await fs.utimes(p, now, now)
+}
+
+// Rimuove i worktree `<prefix>*` sotto `worktreesDir` non usati da più di
+// `maxIdleMs`, saltando quelli in `busy`. Il repo proprietario si ricava dal
+// file .git del worktree ("gitdir: <repo>/.git/worktrees/<nome>").
+export async function sweepIdleWorktrees(worktreesDir, {prefix, maxIdleMs, busy = new Set()}) {
+    let names
+    try {
+        names = await fs.readdir(worktreesDir)
+    } catch {
+        return 0
+    }
+
+    let removed = 0
+    const cutoff = Date.now() - maxIdleMs
+    for (const name of names) {
+        if (!name.startsWith(prefix)) continue
+        const worktreePath = path.join(worktreesDir, name)
+        if (busy.has(worktreePath)) continue
+        try {
+            const st = await fs.stat(worktreePath)
+            if (st.mtimeMs > cutoff) continue
+
+            const gitFile = await fs.readFile(path.join(worktreePath, '.git'), 'utf8').catch(() => '')
+            const gitdir = gitFile.match(/^gitdir:\s*(.+)$/m)?.[1]?.trim()
+            await fs.rm(worktreePath, {recursive: true, force: true})
+            if (gitdir) {
+                const repoPath = path.resolve(gitdir, '..', '..', '..')
+                await simpleGit(repoPath).raw(['worktree', 'prune']).catch(() => {})
+            }
+            removed++
+        } catch (err) {
+            console.error(`sweep worktree ${worktreePath} failed:`, err.message)
+        }
+    }
+    return removed
 }
 
 export async function removeWorktree(repoPath, worktreePath) {

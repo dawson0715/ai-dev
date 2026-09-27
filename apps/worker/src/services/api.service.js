@@ -27,9 +27,13 @@ export function apiClient() {
         listAwaitingMergeJobs: () => request('GET', '/jobs?status=awaiting_merge&limit=1000'),
         updateJob: (jobId, fields) => request('PATCH', `/jobs/${jobId}`, fields),
         heartbeatJob: (jobId) => request('POST', `/jobs/${jobId}/heartbeat`),
+        jobProgress: (jobId, entries) => request('POST', `/jobs/${jobId}/progress`, {entries}),
         askQuestion: (jobId, payload) => request('POST', `/jobs/${jobId}/ask`, payload),
         completeJob: (jobId, payload) => request('POST', `/jobs/${jobId}/complete`, payload),
         markJobMerged: (jobId, payload) => request('POST', `/jobs/${jobId}/merged`, payload),
-        failJob: (jobId, payload) => request('POST', `/jobs/${jobId}/fail`, payload)
+        failJob: (jobId, payload) => request('POST', `/jobs/${jobId}/fail`, payload),
+        claimChat: () => request('POST', '/chats/claim'),
+        replyChat: (chatId, payload) => request('POST', `/chats/${chatId}/reply`, payload),
+        chatProgress: (chatId, entries) => request('POST', `/chats/${chatId}/progress`, {entries})
     }
 }

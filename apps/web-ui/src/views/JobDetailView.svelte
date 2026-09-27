@@ -8,6 +8,9 @@
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
     import Modal from '../components/Modal.svelte'
+    import ActivityFeed from '../components/ActivityFeed.svelte'
+    import ChatDrawer from '../components/ChatDrawer.svelte'
+    import {router} from '../lib/router.svelte.js'
 
     let {jobId} = $props()
 
@@ -195,6 +198,26 @@
         load()
     })
 
+    // Mentre il job gira, ricarico solo il documento (niente spinner né reset
+    // dei form) per mostrare l'attività live dell'agente.
+    const LIVE_POLL_MS = 3000
+    $effect(() => {
+        if (job?.status !== 'running') return
+        const id = jobId
+        const timer = setInterval(async () => {
+            try {
+                const fresh = await api.jobs.get(id)
+                if (id === jobId) job = fresh
+            } catch {
+                // errore transitorio: riprovo al giro successivo
+            }
+        }, LIVE_POLL_MS)
+        return () => clearInterval(timer)
+    })
+
+    const chatOpen = $derived(router.current.params.ask === '1')
+    const chatId = $derived(router.current.params.chat ?? '')
+
     const lastExecution = $derived(job?.executions?.[job.executions.length - 1])
 </script>
 
@@ -234,6 +257,12 @@
             {/if}
         </div>
         <div class="flex flex-wrap gap-2">
+            {#if job.project_id}
+                <Button variant="secondary" onclick={() => router.setParams({ask: '1'})}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Chiedi all'agente
+                </Button>
+            {/if}
             <Button variant="secondary" onclick={openDetails}>
                 Modifica
             </Button>
@@ -269,6 +298,25 @@
             <div class="mt-1 text-sm text-slate-200 tabular-nums">{job.estimate ? formatCurrency(job.estimate) : '—'}</div>
         </Card>
     </div>
+
+    {#if job.status === 'running'}
+        <Card class="mb-6">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-semibold text-slate-100 flex items-center gap-2">
+                    <Spinner size={16}/>
+                    Attività dell'agente
+                </h2>
+                {#if job.progress?.updated_at}
+                    <span class="text-xs text-slate-500">aggiornata {formatRelative(job.progress.updated_at)}</span>
+                {/if}
+            </div>
+            {#if job.progress?.entries?.length}
+                <ActivityFeed entries={job.progress.entries} class="max-h-96 overflow-y-auto"/>
+            {:else}
+                <p class="text-sm text-slate-500">In attesa dei primi eventi dall'agente...</p>
+            {/if}
+        </Card>
+    {/if}
 
     {#if job.status === 'awaiting_clarification'}
         <Card class="mb-6">
@@ -412,6 +460,13 @@
                 </details>
             {/if}
 
+            {#if lastExecution.activity?.length}
+                <details class="mb-3" open={!!lastExecution.error}>
+                    <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">Passaggi dell'agente ({lastExecution.activity.length})</summary>
+                    <ActivityFeed entries={lastExecution.activity} class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 max-h-96 overflow-y-auto"/>
+                </details>
+            {/if}
+
             {#if lastExecution.logs?.length}
                 <details>
                     <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">Logs ({lastExecution.logs.length})</summary>
@@ -453,6 +508,13 @@
             </ul>
         </Card>
     {/if}
+{/if}
+
+{#if job?.project_id}
+    <ChatDrawer open={chatOpen} onclose={() => router.setParams({})}
+                subtitle={`Job: ${job.title ?? job.clickup?.title ?? ''}`}
+                projectId={job.project_id} jobId={job._id} {chatId}
+                onselect={(id) => router.setParams({ask: '1', chat: id})}/>
 {/if}
 
 <Modal open={confirmFail} title="Marcare come failed?" onclose={() => confirmFail = false}>

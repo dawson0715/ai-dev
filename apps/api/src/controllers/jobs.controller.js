@@ -104,6 +104,11 @@ export function jobsController({jobsService}) {
             }
         },
 
+        async progress(req, reply) {
+            const id = new ObjectId(req.params.id)
+            return jobsService.progress(id, req.body ?? {})
+        },
+
         async heartbeat(req, reply) {
             const id = new ObjectId(req.params.id)
             try {

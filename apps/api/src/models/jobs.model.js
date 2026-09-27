@@ -176,7 +176,8 @@ export function jobsModel(db) {
                         started_at: new Date(),
                         heartbeat_at: new Date(),
                         liquibase_id: liquibaseId
-                    }
+                    },
+                    $unset: {progress: ''}
                 },
                 {returnDocument: 'after'}
             )
@@ -246,11 +247,13 @@ export function jobsModel(db) {
             expectedStatuses = null,
             requireProjectSlot = false
         } = {}) {
+            // L'attività live finisce in execution.activity: il campo progress si svuota.
             const update = {
                 $push: {executions: execution},
-                $set: setFields
+                $set: setFields,
+                $unset: {progress: ''}
             }
-            if (releaseProject) update.$unset = {project_slot: '', heartbeat_at: ''}
+            if (releaseProject) Object.assign(update.$unset, {project_slot: '', heartbeat_at: ''})
 
             const filter = {_id: id}
             if (expectedStatuses) filter.status = {$in: expectedStatuses}
@@ -307,6 +310,14 @@ export function jobsModel(db) {
                     $unset: {project_slot: '', heartbeat_at: ''}
                 },
                 {returnDocument: 'after'}
+            )
+        },
+
+        // Attività live dell'esecuzione in corso (sostituita a ogni flush del worker).
+        setProgress(id, entries) {
+            return collection.updateOne(
+                {_id: id, status: 'running'},
+                {$set: {progress: {entries, updated_at: new Date()}}}
             )
         },
 

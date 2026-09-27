@@ -3,44 +3,126 @@ import {spawn} from 'child_process'
 const CLAUDE_BIN = process.env.CLAUDE_BIN ?? 'claude'
 const CLAUDE_TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS ?? 15 * 60 * 1000)
 
-// Con --output-format json il CLI stampa su stdout un unico oggetto JSON a fine
-// esecuzione (niente log di tool-use frammisti): {result, total_cost_usd, usage:
-// {input_tokens, output_tokens}, ...}. Se il parsing fallisce (output inatteso,
-// versione CLI diversa) degradiamo al testo grezzo: il worker continua a
-// funzionare, solo senza i dati strutturati (costo reale, token, stima minuti).
-function parseClaudeOutput(stdout) {
-    try {
-        const parsed = JSON.parse(stdout)
-        return {
-            text: typeof parsed.result === 'string' ? parsed.result : stdout,
-            totalCostUsd: typeof parsed.total_cost_usd === 'number' ? parsed.total_cost_usd : null,
-            inputTokens: parsed.usage?.input_tokens ?? null,
-            outputTokens: parsed.usage?.output_tokens ?? null
+const ACTIVITY_TEXT_CHARS = 500
+const ACTIVITY_DETAIL_CHARS = 200
+
+function clip(value, max) {
+    const text = String(value ?? '').trim()
+    return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+// Riassume un evento stream-json in voci di attività leggibili dalla UI:
+// testo dell'assistente e tool usati (con il file/pattern/comando principale).
+// I tool_result non vengono riportati: sono voluminosi e poco informativi.
+export function summarizeEvent(event) {
+    // Tool negato dai permessi (es. tentativo di scrittura in una chat in sola lettura).
+    if (event?.type === 'system' && event.subtype === 'permission_denied') {
+        return [{kind: 'denied', tool: event.tool_name ?? '', text: ''}]
+    }
+    if (event?.type !== 'assistant') return []
+    const entries = []
+    for (const block of event.message?.content ?? []) {
+        if (block.type === 'text' && block.text?.trim()) {
+            entries.push({kind: 'text', text: clip(block.text, ACTIVITY_TEXT_CHARS)})
+        } else if (block.type === 'tool_use') {
+            const input = block.input ?? {}
+            const detail = input.file_path ?? input.notebook_path ?? input.pattern ?? input.command
+                ?? input.path ?? input.url ?? input.description ?? ''
+            entries.push({kind: 'tool', tool: block.name, text: clip(detail, ACTIVITY_DETAIL_CHARS)})
         }
-    } catch {
-        return {text: stdout, totalCostUsd: null, inputTokens: null, outputTokens: null}
+    }
+    return entries
+}
+
+// L'evento finale `result` di stream-json ha gli stessi campi del vecchio
+// output json: {result, total_cost_usd, usage: {input_tokens, output_tokens}},
+// più session_id (per --resume), subtype ed errors (es. error_max_budget_usd).
+// Se manca (CLI interrotto, versione diversa) si ripiega sul testo degli
+// eventi assistant, senza costo/token.
+export function resultFromEvents(resultEvent, assistantTexts, sessionId = null) {
+    const fallback = assistantTexts.join('\n\n')
+    if (!resultEvent) {
+        return {text: fallback, totalCostUsd: null, inputTokens: null, outputTokens: null, sessionId, subtype: null, errors: []}
+    }
+    return {
+        text: typeof resultEvent.result === 'string' ? resultEvent.result : fallback,
+        totalCostUsd: typeof resultEvent.total_cost_usd === 'number' ? resultEvent.total_cost_usd : null,
+        inputTokens: resultEvent.usage?.input_tokens ?? null,
+        outputTokens: resultEvent.usage?.output_tokens ?? null,
+        sessionId: resultEvent.session_id ?? sessionId,
+        subtype: resultEvent.subtype ?? null,
+        errors: Array.isArray(resultEvent.errors) ? resultEvent.errors : []
     }
 }
 
-export async function runClaude({cwd, prompt}) {
+// Esegue il CLI in streaming (--output-format stream-json, che con -p richiede
+// --verbose): una riga JSON per evento. `onActivity` riceve le voci di attività
+// man mano, così il chiamante può mostrare il progresso e conservarlo anche se
+// l'esecuzione va in timeout.
+// `permissionArgs` sostituisce il default (bypassPermissions, usato dai job che
+// devono modificare il repo): la chat passa una allowlist di soli tool di lettura.
+// `extraArgs` (es. --model, --resume) e `env` si aggiungono a quelli di default.
+// In caso di errore l'eccezione ha `err.result` con quanto noto dell'esecuzione
+// (sessionId, costo, subtype/errors del CLI), anche su timeout.
+export async function runClaude({
+    cwd,
+    prompt,
+    permissionArgs = ['--permission-mode', 'bypassPermissions'],
+    extraArgs = [],
+    env = {},
+    timeoutMs = CLAUDE_TIMEOUT_MS,
+    onActivity = () => {}
+}) {
     return new Promise((resolve, reject) => {
         const child = spawn(
             CLAUDE_BIN,
-            ['-p', prompt, '--permission-mode', 'bypassPermissions', '--output-format', 'json'],
-            {cwd, env: process.env}
+            ['-p', prompt, ...permissionArgs, ...extraArgs, '--output-format', 'stream-json', '--verbose'],
+            // stdin chiuso: altrimenti il CLI attende 3s dati in ingresso prima di partire.
+            {cwd, env: {...process.env, ...env}, stdio: ['ignore', 'pipe', 'pipe']}
         )
 
-        let stdout = ''
+        let buffer = ''
         let stderr = ''
         let timedOut = false
+        let resultEvent = null
+        let sessionId = null
+        const assistantTexts = []
+
+        const handleLine = (line) => {
+            if (!line.trim()) return
+            let event
+            try {
+                event = JSON.parse(line)
+            } catch {
+                return
+            }
+            if (event.type === 'system' && event.subtype === 'init' && event.session_id) sessionId = event.session_id
+            if (event.type === 'result') {
+                resultEvent = event
+                return
+            }
+            for (const entry of summarizeEvent(event)) {
+                if (entry.kind === 'text') assistantTexts.push(entry.text)
+                try {
+                    onActivity(entry)
+                } catch (err) {
+                    console.error('onActivity failed:', err.message)
+                }
+            }
+        }
 
         const timeout = setTimeout(() => {
             timedOut = true
             child.kill('SIGTERM')
-        }, CLAUDE_TIMEOUT_MS)
+        }, timeoutMs)
 
         child.stdout.on('data', d => {
-            stdout += d.toString()
+            buffer += d.toString()
+            let newline
+            while ((newline = buffer.indexOf('\n')) !== -1) {
+                handleLine(buffer.slice(0, newline))
+                buffer = buffer.slice(newline + 1)
+            }
         })
         child.stderr.on('data', d => {
             stderr += d.toString()
@@ -53,15 +135,25 @@ export async function runClaude({cwd, prompt}) {
 
         child.on('close', code => {
             clearTimeout(timeout)
+            handleLine(buffer)
+            const result = resultFromEvents(resultEvent, assistantTexts, sessionId)
+            const fail = (message) => {
+                const err = new Error(message)
+                err.result = result
+                reject(err)
+            }
             if (timedOut) {
-                reject(new Error(`claude timed out after ${CLAUDE_TIMEOUT_MS}ms`))
+                fail(`claude timed out after ${timeoutMs}ms`)
                 return
             }
             if (code !== 0) {
-                reject(new Error(`claude exited with code ${code}: ${stderr}`))
+                // Il motivo può stare in errors[], in stderr o nel testo del
+                // risultato (es. "Not logged in · Please run /login").
+                const reason = result.errors.join('; ') || stderr.trim() || result.text.trim()
+                fail(`claude exited with code ${code}: ${reason}`)
                 return
             }
-            resolve({stdout, stderr, ...parseClaudeOutput(stdout)})
+            resolve({stdout: result.text, stderr, ...result})
         })
     })
 }

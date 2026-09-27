@@ -57,6 +57,18 @@ export const api = {
         billable: (clientId) => request('/jobs/billable', {query: {client_id: clientId}})
     },
 
+    // Chat di sola lettura sul codice di un progetto (opzionalmente legata a un
+    // job): le risposte arrivano in modo asincrono dal worker.
+    chats: {
+        list: (projectId, {jobId} = {}) => request(`/projects/${projectId}/chats`, {query: {job_id: jobId || undefined}}),
+        create: (projectId, text, {jobId} = {}) =>
+            request(`/projects/${projectId}/chats`, {method: 'POST', body: {text, job_id: jobId || undefined}}),
+        get: (id) => request(`/chats/${id}`),
+        send: (id, text) => request(`/chats/${id}/messages`, {method: 'POST', body: {text}}),
+        draftJob: (id) => request(`/chats/${id}/draft-job`, {method: 'POST'}),
+        remove: (id) => request(`/chats/${id}`, {method: 'DELETE'})
+    },
+
     clients: {
         list: () => request('/clients'),
         get: (id) => request(`/clients/${id}`),

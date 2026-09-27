@@ -5,11 +5,13 @@ import {clientsController} from './controllers/clients.controller.js'
 import {sprintsController} from './controllers/sprints.controller.js'
 import {supportController} from './controllers/support.controller.js'
 import {gitlabController} from './controllers/gitlab.controller.js'
+import {chatsController} from './controllers/chats.controller.js'
 import {projectsService} from './services/projects.service.js'
 import {jobsService} from './services/jobs.service.js'
 import {clientsService} from './services/clients.service.js'
 import {sprintsService} from './services/sprints.service.js'
 import {supportService} from './services/support.service.js'
+import {chatsService} from './services/chats.service.js'
 
 export async function registerRoutes(app, db) {
     const jobs = jobsService(db)
@@ -17,11 +19,13 @@ export async function registerRoutes(app, db) {
     const clients = clientsService(db)
     const sprints = sprintsService(db)
     const support = supportService(db)
+    const chats = chatsService(db)
 
     await projects.init()
     await jobs.init()
     await clients.init()
     await sprints.init()
+    await chats.init()
 
     const health = healthController()
     const projectsCtl = projectsController({projectsService: projects, jobsService: jobs})
@@ -30,6 +34,7 @@ export async function registerRoutes(app, db) {
     const sprintsCtl = sprintsController({sprintsService: sprints})
     const supportCtl = supportController({supportService: support})
     const gitlabCtl = gitlabController()
+    const chatsCtl = chatsController({chatsService: chats})
 
     app.get('/health', health.get)
 
@@ -41,6 +46,18 @@ export async function registerRoutes(app, db) {
     app.get('/projects/:id/jobs', projectsCtl.listJobs)
     app.post('/projects/:id/jobs', projectsCtl.createJob)
     app.post('/projects/:id/jobs/sync', projectsCtl.syncJobs)
+    app.get('/projects/:id/chats', chatsCtl.listByProject)
+    app.post('/projects/:id/chats', chatsCtl.create)
+
+    // Chat di sola lettura sul codice del progetto: l'API accoda le domande,
+    // il worker le claima e risponde (Claude senza tool di scrittura).
+    app.post('/chats/claim', chatsCtl.claim)
+    app.get('/chats/:id', chatsCtl.get)
+    app.delete('/chats/:id', chatsCtl.remove)
+    app.post('/chats/:id/messages', chatsCtl.addMessage)
+    app.post('/chats/:id/draft-job', chatsCtl.draftJob)
+    app.post('/chats/:id/progress', chatsCtl.progress)
+    app.post('/chats/:id/reply', chatsCtl.reply)
 
     app.get('/gitlab/service-accounts', gitlabCtl.listServiceAccounts)
 
@@ -56,6 +73,7 @@ export async function registerRoutes(app, db) {
     app.post('/jobs/:id/ask', jobsCtl.ask)
     app.post('/jobs/:id/complete', jobsCtl.complete)
     app.post('/jobs/:id/heartbeat', jobsCtl.heartbeat)
+    app.post('/jobs/:id/progress', jobsCtl.progress)
     app.post('/jobs/:id/merge', jobsCtl.requestMerge)
     app.post('/jobs/:id/manual-review', jobsCtl.requestManualReview)
     app.post('/jobs/:id/merged', jobsCtl.merged)

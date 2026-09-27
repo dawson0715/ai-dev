@@ -5,6 +5,7 @@ import {clientsModel} from '../models/clients.model.js'
 import {listTodoTasks, postComment, setTaskStatus} from './clickup.service.js'
 import {listOpenIssues} from './gitlabIssues.service.js'
 import {createNextLiquibaseId} from '../liquibase.js'
+import {sanitizeActivity} from '../activity.js'
 
 const MANUAL_JOB_STATUSES = ['pending', 'running', 'awaiting_merge', 'awaiting_clarification', 'completed', 'merged', 'failed']
 
@@ -333,6 +334,13 @@ export function jobsService(db) {
         async heartbeat(jobId) {
             const result = await jobs.heartbeat(jobId)
             if (result.matchedCount === 0) throw badRequest('job is not running')
+            return {ok: true}
+        },
+
+        // Nessun errore se il job non è più running: un flush tardivo del worker
+        // dopo la chiusura dell'esecuzione viene semplicemente ignorato.
+        async progress(jobId, {entries}) {
+            await jobs.setProgress(jobId, sanitizeActivity(entries))
             return {ok: true}
         },
 
