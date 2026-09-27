@@ -452,11 +452,17 @@ export function jobsModel(db) {
 
         // Esclude di default i job archiviati (sprint chiuso senza fattura):
         // restano visibili solo dal dettaglio dello sprint che li contiene.
-        // `excludeProjectIds` nasconde i job dei progetti archiviati.
-        findAll({limit = 100, status, excludeProjectIds = []} = {}) {
+        // `excludeProjectIds` nasconde i job dei progetti archiviati;
+        // `projectId` limita la lista a un progetto.
+        findAll({limit = 100, status, projectId, excludeProjectIds = []} = {}) {
             const filter = {archived: {$ne: true}}
             if (status) filter.status = status
-            if (excludeProjectIds.length) filter.project_id = {$nin: excludeProjectIds}
+            if (projectId || excludeProjectIds.length) {
+                filter.project_id = {
+                    ...(projectId ? {$eq: projectId} : {}),
+                    ...(excludeProjectIds.length ? {$nin: excludeProjectIds} : {})
+                }
+            }
             return collection
                 .find(filter, {projection: {executions: 0}})
                 .sort({created_at: -1})

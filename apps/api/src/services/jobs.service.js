@@ -102,10 +102,21 @@ export function jobsService(db) {
         init: () => jobs.init(),
 
         // I job dei progetti archiviati non compaiono nella lista globale
-        // (restano visibili dal dettaglio progetto).
-        async findAll(opts = {}) {
+        // (restano visibili dal dettaglio progetto). `project_id` restringe la
+        // lista a un solo progetto.
+        async findAll({project_id, ...opts} = {}) {
+            let projectId
+            if (project_id) {
+                try {
+                    projectId = new ObjectId(project_id)
+                } catch {
+                    const err = new Error('invalid project_id')
+                    err.statusCode = 400
+                    throw err
+                }
+            }
             const excludeProjectIds = await projects.findArchivedIds()
-            return jobs.findAll({...opts, excludeProjectIds})
+            return jobs.findAll({...opts, projectId, excludeProjectIds})
         },
 
         findByProject: (projectId) => jobs.findByProject(projectId),

@@ -4,6 +4,7 @@
     import {formatDate, formatRelative, formatCurrency} from '../lib/format.js'
     import Button from '../components/Button.svelte'
     import Card from '../components/Card.svelte'
+    import Markdown from '../components/Markdown.svelte'
     import Field from '../components/Field.svelte'
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
@@ -435,7 +436,7 @@
     {#if job.description || job.clickup?.description}
         <Card class="mb-6">
             <h2 class="font-semibold text-slate-100 mb-3">Descrizione task</h2>
-            <pre class="whitespace-pre-wrap text-sm text-slate-300 font-sans">{job.description || job.clickup?.description}</pre>
+            <Markdown text={job.description || job.clickup?.description} class="text-sm text-slate-300"/>
         </Card>
     {/if}
 
@@ -449,14 +450,14 @@
             {#if lastExecution.prompt}
                 <details class="mb-3" open>
                     <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">Prompt</summary>
-                    <pre class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-xs text-slate-300 whitespace-pre-wrap overflow-x-auto">{lastExecution.prompt}</pre>
+                    <Markdown text={lastExecution.prompt} class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-sm text-slate-300 overflow-x-auto"/>
                 </details>
             {/if}
 
             {#if lastExecution.response}
                 <details class="mb-3" open>
                     <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100 py-1.5">Response</summary>
-                    <pre class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-xs text-slate-200 whitespace-pre-wrap overflow-x-auto">{lastExecution.response}</pre>
+                    <Markdown text={lastExecution.response} class="mt-2 p-3 rounded-lg bg-slate-950/60 ring-1 ring-slate-800 text-sm text-slate-200 overflow-x-auto"/>
                 </details>
             {/if}
 

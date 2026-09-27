@@ -73,3 +73,19 @@ test('rejects sync of an archived project', async () => {
         (err) => err.statusCode === 409 && err.message === 'project is archived'
     )
 })
+
+test('filters the job list by project', async () => {
+    const projectId = new ObjectId()
+    let jobsFilter = null
+    const db = {collection: (name) => name === 'jobs'
+        ? {find: (filter) => (jobsFilter = filter, cursor([]))}
+        : {distinct: async () => []}}
+
+    await jobsService(db).findAll({limit: 10, project_id: String(projectId)})
+    assert.deepEqual(jobsFilter, {archived: {$ne: true}, project_id: {$eq: projectId}})
+
+    await assert.rejects(
+        jobsService(db).findAll({project_id: 'nope'}),
+        (err) => err.statusCode === 400
+    )
+})

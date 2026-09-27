@@ -5,7 +5,13 @@ export function jobsController({jobsService}) {
         async list(req, reply) {
             const limit = req.query?.limit ? Number(req.query.limit) : 100
             const status = req.query?.status || undefined
-            return jobsService.findAll({limit, status})
+            const project_id = req.query?.project_id || undefined
+            try {
+                return await jobsService.findAll({limit, status, project_id})
+            } catch (err) {
+                if (err.statusCode) return reply.code(err.statusCode).send({error: err.message})
+                throw err
+            }
         },
 
         async billable(req, reply) {

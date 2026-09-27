@@ -2,13 +2,14 @@
     import {api} from '../lib/api.js'
     import {toast} from '../lib/toast.svelte.js'
     import {formatRelative, formatCurrency} from '../lib/format.js'
-    import {go} from '../lib/router.svelte.js'
+    import {go, router} from '../lib/router.svelte.js'
     import {sortByClientName} from '../lib/projectSort.js'
     import Button from '../components/Button.svelte'
     import Card from '../components/Card.svelte'
     import StatusBadge from '../components/StatusBadge.svelte'
     import Spinner from '../components/Spinner.svelte'
     import EmptyState from '../components/EmptyState.svelte'
+    import Select from '../components/Select.svelte'
     import NewJobModal from '../components/NewJobModal.svelte'
 
     let jobs = $state([])
@@ -21,24 +22,45 @@
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
     const sortedProjects = $derived(sortByClientName(projects, clientName))
+    const projectById = $derived(Object.fromEntries(projects.map((p) => [p._id, p])))
 
-    async function load() {
-        loading = true
+    // Filtro progetto riflesso nell'URL (#/jobs?project=<id>), applicato dal backend
+    // così il limite di 200 vale per il progetto scelto.
+    const projectFilter = $derived(router.current.params.project ?? '')
+    const projectFilterOptions = $derived([
+        {value: '', label: 'Tutti i progetti'},
+        ...sortedProjects.map((p) => ({
+            value: p._id,
+            label: clientName[p.client_id] ? `${clientName[p.client_id]} · ${p.name}` : p.name
+        }))
+    ])
+
+    function setProjectFilter(value) {
+        router.setParams({...router.current.params, project: value})
+    }
+
+    async function loadMeta() {
         try {
-            const [j, p, cs] = await Promise.all([
-                api.jobs.list({limit: 200}),
-                api.projects.list(),
-                api.clients.list()
-            ])
-            jobs = j
+            const [p, cs] = await Promise.all([api.projects.list(), api.clients.list()])
             projects = p
             clients = cs
+        } catch (e) {
+            toast.error(`Errore: ${e.message}`)
+        }
+    }
+
+    async function loadJobs(projectId) {
+        loading = true
+        try {
+            jobs = await api.jobs.list({limit: 200, project_id: projectId || undefined})
         } catch (e) {
             toast.error(`Errore: ${e.message}`)
         } finally {
             loading = false
         }
     }
+
+    const load = () => loadJobs(projectFilter)
 
     const filtered = $derived(
         filter === 'all'
@@ -58,7 +80,9 @@
         {key: 'awaiting_clarification', label: 'In attesa'}
     ]
 
-    $effect(() => { load() })
+    $effect(() => { loadMeta() })
+    // Ricarica i job quando cambia il filtro progetto.
+    $effect(() => { loadJobs(projectFilter) })
 </script>
 
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -70,6 +94,11 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         Nuovo job
     </Button>
+</div>
+
+<div class="mb-4 sm:w-80">
+    <Select label="Progetto" value={projectFilter} options={projectFilterOptions}
+            onchange={(e) => setProjectFilter(e.currentTarget.value)}/>
 </div>
 
 <div class="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
@@ -85,7 +114,7 @@
 {#if loading}
     <div class="flex justify-center py-16"><Spinner size={32}/></div>
 {:else if filtered.length === 0}
-    <Card><EmptyState title="Nessun job" description={filter === 'all' ? 'Esegui un sync ClickUp da un progetto, oppure crea un job manuale.' : 'Nessun job in questo stato.'}/></Card>
+    <Card><EmptyState title="Nessun job" description={filter === 'all' && !projectFilter ? 'Esegui un sync ClickUp da un progetto, oppure crea un job manuale.' : 'Nessun job in questo stato.'}/></Card>
 {:else}
     <Card padding="none">
         <ul class="divide-y divide-slate-800">
@@ -95,8 +124,12 @@
                         onclick={() => go(`/jobs/${job._id}`)}
                         class="w-full text-left px-4 sm:px-6 py-4 hover:bg-slate-800/40 transition flex flex-col sm:flex-row sm:items-center gap-3">
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
+                            <div class="flex items-center gap-2 mb-1 min-w-0">
                                 <StatusBadge status={job.status}/>
+                                {#if job.project_id && projectById[job.project_id]}
+                                    <span class="text-xs text-brand-300 px-1.5 py-0.5 rounded ring-1 ring-inset ring-brand-500/30 truncate max-w-[12rem]"
+                                          title={clientName[projectById[job.project_id].client_id] ?? ''}>{projectById[job.project_id].name}</span>
+                                {/if}
                                 {#if job.clickup?.task_id}
                                     <span class="text-xs text-slate-500 font-mono truncate">{job.clickup.task_id}</span>
                                 {:else}
