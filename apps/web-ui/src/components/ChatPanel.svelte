@@ -6,6 +6,7 @@
     import Button from './Button.svelte'
     import Spinner from './Spinner.svelte'
     import ActivityFeed from './ActivityFeed.svelte'
+    import Markdown from './Markdown.svelte'
     import NewJobModal from './NewJobModal.svelte'
 
     // Chat di sola lettura sul codice del progetto. Con `jobId` la
@@ -205,8 +206,10 @@
                             {:else if m.kind === 'job_draft' && m.job_draft}
                                 <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">Bozza job</div>
                                 <div class="font-medium text-slate-100">{m.job_draft.title}</div>
-                                <div class="whitespace-pre-wrap break-words text-xs text-slate-300 mt-1.5 max-h-48 overflow-y-auto">{m.job_draft.description}</div>
+                                <Markdown text={m.job_draft.description} compact class="text-xs text-slate-300 mt-1.5 max-h-48 overflow-y-auto"/>
                                 <Button size="sm" class="mt-3" onclick={() => draftForJob = m.job_draft}>Rivedi e crea job</Button>
+                            {:else if m.role === 'assistant'}
+                                <Markdown text={m.text}/>
                             {:else}
                                 <div class="whitespace-pre-wrap break-words">{m.text}</div>
                             {/if}

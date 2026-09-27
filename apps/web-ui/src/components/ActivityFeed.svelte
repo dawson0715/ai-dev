@@ -1,4 +1,6 @@
 <script>
+    import Markdown from './Markdown.svelte'
+
     // Voci di attività di un'esecuzione Claude (vedi worker summarizeEvent):
     // {kind: text|tool|denied, tool?, text, at?}.
     let {entries = [], limit = 0, class: extraClass = ''} = $props()
@@ -21,7 +23,7 @@
                 <span class="shrink-0 font-mono px-1.5 rounded bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30">{entry.tool}</span>
                 <span class="text-rose-300/80">negato dai permessi</span>
             {:else}
-                <span class="text-slate-300 whitespace-pre-wrap break-words">{entry.text}</span>
+                <Markdown text={entry.text} compact class="min-w-0 text-slate-300"/>
             {/if}
         </li>
     {/each}
