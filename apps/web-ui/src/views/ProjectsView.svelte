@@ -2,7 +2,7 @@
     import {api} from '../lib/api.js'
     import {toast} from '../lib/toast.svelte.js'
     import {formatRelative} from '../lib/format.js'
-    import {go} from '../lib/router.svelte.js'
+    import {go, router} from '../lib/router.svelte.js'
     import Button from '../components/Button.svelte'
     import Card from '../components/Card.svelte'
     import Modal from '../components/Modal.svelte'
@@ -40,17 +40,51 @@
     )
     const sortedProjects = $derived(sortByClientName(projects, clientName))
 
-    async function load() {
-        loading = true
+    // Filtri riflessi nell'URL (#/projects?client=<id>&archived=1, `none` = senza cliente).
+    // I progetti archiviati li esclude il backend, salvo `archived=1`.
+    const NO_CLIENT = 'none'
+    const clientFilter = $derived(router.current.params.client ?? '')
+    const showArchived = $derived(router.current.params.archived === '1')
+    const clientFilterOptions = $derived([
+        {value: '', label: 'Tutti i clienti'},
+        {value: NO_CLIENT, label: 'Nessun cliente'},
+        ...clients.map((c) => ({value: c._id, label: c.name || '(senza nome)'}))
+    ])
+    const filteredProjects = $derived(sortedProjects.filter((p) => {
+        if (clientFilter === '') return true
+        if (clientFilter === NO_CLIENT) return !p.client_id
+        return p.client_id === clientFilter
+    }))
+    const hasFilters = $derived(clientFilter !== '' || showArchived)
+
+    function setClientFilter(value) {
+        router.setParams({...router.current.params, client: value})
+    }
+
+    function setShowArchived(value) {
+        router.setParams({...router.current.params, archived: value ? '1' : ''})
+    }
+
+    function resetFilters() {
+        router.setParams({})
+    }
+
+    async function loadMeta() {
         try {
-            const [ps, cs, gitlabConfig] = await Promise.all([
-                api.projects.list(),
+            const [cs, gitlabConfig] = await Promise.all([
                 api.clients.list(),
                 api.gitlab.serviceAccounts()
             ])
-            projects = ps
             clients = cs
             gitlabServiceAccounts = gitlabConfig.service_accounts ?? []
+        } catch (e) {
+            toast.error(`Errore caricamento progetti: ${e.message}`)
+        }
+    }
+
+    async function loadProjects(includeArchived) {
+        try {
+            projects = await api.projects.list({includeArchived})
         } catch (e) {
             toast.error(`Errore caricamento progetti: ${e.message}`)
         } finally {
@@ -77,7 +111,7 @@
             toast.success('Progetto creato')
             modalOpen = false
             resetForm()
-            await load()
+            await loadProjects(showArchived)
         } catch (e) {
             toast.error(`Creazione fallita: ${e.message}`)
         } finally {
@@ -85,7 +119,9 @@
         }
     }
 
-    $effect(() => { load() })
+    $effect(() => { loadMeta() })
+    // Ricarica dal backend quando cambia il toggle "Mostra archiviati".
+    $effect(() => { loadProjects(showArchived) })
 </script>
 
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -101,30 +137,58 @@
 
 {#if loading}
     <div class="flex justify-center py-16"><Spinner size={32}/></div>
-{:else if projects.length === 0}
-    <Card>
-        <EmptyState
-            title="Nessun progetto"
-            description="Crea il primo progetto e scegli se importare task o gestirli manualmente.">
-            {#snippet action()}
-                <Button onclick={() => modalOpen = true}>Crea progetto</Button>
-            {/snippet}
-        </EmptyState>
-    </Card>
 {:else}
+    <div class="mb-4 flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-6">
+        <div class="sm:w-72">
+            <Select label="Cliente" value={clientFilter} options={clientFilterOptions}
+                    onchange={(e) => setClientFilter(e.currentTarget.value)}/>
+        </div>
+        <label class="inline-flex items-center gap-2 text-sm text-slate-300 cursor-pointer sm:pb-2.5">
+            <input type="checkbox" checked={showArchived}
+                   onchange={(e) => setShowArchived(e.currentTarget.checked)}
+                   class="h-4 w-4 rounded border-slate-700 bg-slate-950/50 accent-brand-500"/>
+            Mostra archiviati
+        </label>
+    </div>
+    {#if projects.length === 0 && !hasFilters}
+        <Card>
+            <EmptyState
+                title="Nessun progetto"
+                description="Crea il primo progetto e scegli se importare task o gestirli manualmente.">
+                {#snippet action()}
+                    <Button onclick={() => modalOpen = true}>Crea progetto</Button>
+                {/snippet}
+            </EmptyState>
+        </Card>
+    {:else if filteredProjects.length === 0}
+        <Card>
+            <EmptyState
+                title="Nessun progetto"
+                description="Nessun progetto corrisponde ai filtri selezionati.">
+                {#snippet action()}
+                    <Button variant="ghost" onclick={resetFilters}>Azzera filtri</Button>
+                {/snippet}
+            </EmptyState>
+        </Card>
+    {/if}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {#each sortedProjects as p (p._id)}
+        {#each filteredProjects as p (p._id)}
             <button
                 onclick={() => go(`/projects/${p._id}`)}
                 class="text-left group">
-                <Card class="hover:ring-brand-500/40 transition cursor-pointer h-full">
+                <Card class="hover:ring-brand-500/40 transition cursor-pointer h-full {p.archived ? 'opacity-60' : ''}">
                     <div class="flex items-start justify-between gap-3 mb-3">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500/30 to-brand-700/30 ring-1 ring-brand-500/30 flex items-center justify-center text-brand-200 font-semibold">
                             {(p.name ?? '?').slice(0, 1).toUpperCase()}
                         </div>
                         <svg class="text-slate-500 group-hover:text-brand-300 transition" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
                     </div>
-                    <h3 class="font-semibold text-slate-100 truncate">{p.name ?? '(senza nome)'}</h3>
+                    <div class="flex items-center gap-2 min-w-0">
+                        <h3 class="font-semibold text-slate-100 truncate">{p.name ?? '(senza nome)'}</h3>
+                        {#if p.archived}
+                            <span class="shrink-0 text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 ring-1 ring-slate-700">Archiviato</span>
+                        {/if}
+                    </div>
                     <p class="text-xs text-slate-500 mt-1 truncate">
                         {p.client_id ? (clientName[p.client_id] ?? 'Cliente sconosciuto') : 'Nessun cliente'}
                     </p>

@@ -31,7 +31,8 @@ export const api = {
     health: () => request('/health'),
 
     projects: {
-        list: () => request('/projects'),
+        list: ({includeArchived = false} = {}) =>
+            request('/projects', {query: includeArchived ? {include_archived: 'true'} : undefined}),
         get: (id) => request(`/projects/${id}`),
         create: (data) => request('/projects', {method: 'POST', body: data}),
         update: (id, data) => request(`/projects/${id}`, {method: 'PATCH', body: data}),

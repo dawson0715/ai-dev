@@ -23,6 +23,7 @@ test('skips a project slot won by another executor and claims another project', 
         }
     }
     const projectsCollection = {
+        distinct: async () => [],
         findOne: async (filter) => filter._id.equals(project._id) ? project : null
     }
     const db = {

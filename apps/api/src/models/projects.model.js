@@ -11,8 +11,13 @@ export function projectsModel(db) {
         insert(doc) {
             return collection.insertOne(doc)
         },
-        findAll() {
-            return collection.find({}).toArray()
+        // I progetti archiviati sono esclusi salvo `includeArchived`.
+        findAll({includeArchived = false} = {}) {
+            const filter = includeArchived ? {} : {archived: {$ne: true}}
+            return collection.find(filter).toArray()
+        },
+        findArchivedIds() {
+            return collection.distinct('_id', {archived: true})
         },
         findById(id) {
             return collection.findOne({_id: id})

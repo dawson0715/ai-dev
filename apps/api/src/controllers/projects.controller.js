@@ -8,7 +8,7 @@ export function projectsController({projectsService, jobsService}) {
         },
 
         async list(req, reply) {
-            return projectsService.findAll()
+            return projectsService.findAll({include_archived: req.query?.include_archived})
         },
 
         async get(req, reply) {

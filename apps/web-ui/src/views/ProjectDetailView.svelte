@@ -37,6 +37,7 @@
         gitlab_direct_branch: false
     })
     let saving = $state(false)
+    let archiving = $state(false)
 
     const clientName = $derived(Object.fromEntries(clients.map((c) => [c._id, c.name || '(senza nome)'])))
     const clientOptions = $derived([
@@ -111,6 +112,19 @@
         }
     }
 
+    async function setArchived(archived) {
+        archiving = true
+        try {
+            await api.projects.update(projectId, {archived})
+            toast.success(archived ? 'Progetto archiviato' : 'Progetto ripristinato')
+            await load()
+        } catch (e) {
+            toast.error(`${archived ? 'Archiviazione' : 'Ripristino'} fallito: ${e.message}`)
+        } finally {
+            archiving = false
+        }
+    }
+
     async function remove() {
         try {
             await api.projects.remove(projectId)
@@ -147,13 +161,18 @@
 {:else}
     <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div class="min-w-0">
-            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 truncate">{project.name}</h1>
+            <div class="flex items-center gap-3 min-w-0">
+                <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 truncate">{project.name}</h1>
+                {#if project.archived}
+                    <span class="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 ring-1 ring-slate-700">Archiviato</span>
+                {/if}
+            </div>
             <p class="text-slate-400 text-sm mt-1 truncate">
                 {project.client_id ? (clientName[project.client_id] ?? 'Cliente sconosciuto') : 'Nessun cliente'}
             </p>
         </div>
         <div class="flex flex-wrap gap-2">
-            {#if project.task_source !== 'manual'}
+            {#if project.task_source !== 'manual' && !project.archived}
                 <Button variant="secondary" onclick={sync} loading={syncing} disabled={syncing}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
                     {project.task_source === 'gitlab_issues' ? 'Sync GitLab issues' : 'Sync ClickUp'}
@@ -164,6 +183,10 @@
                 Nuovo job
             </Button>
             <Button variant="ghost" onclick={() => editOpen = true}>Modifica</Button>
+            <Button variant="secondary" onclick={() => setArchived(!project.archived)}
+                    loading={archiving} disabled={archiving}>
+                {project.archived ? 'Ripristina' : 'Archivia'}
+            </Button>
             <Button variant="danger" size="md" onclick={() => confirmDelete = true}>Elimina</Button>
         </div>
     </div>

@@ -147,14 +147,14 @@ export function jobsModel(db) {
             return collection.distinct('project_id', {project_slot: true})
         },
 
-        findClaimCandidates(limit = 100, activeProjectIds = []) {
+        findClaimCandidates(limit = 100, excludedProjectIds = []) {
             return collection.aggregate([
                 {
                     $match: {
                         status: 'pending',
                         project_id: {
                             $exists: true,
-                            ...(activeProjectIds.length ? {$nin: activeProjectIds} : {})
+                            ...(excludedProjectIds.length ? {$nin: excludedProjectIds} : {})
                         }
                     }
                 },
@@ -441,9 +441,11 @@ export function jobsModel(db) {
 
         // Esclude di default i job archiviati (sprint chiuso senza fattura):
         // restano visibili solo dal dettaglio dello sprint che li contiene.
-        findAll({limit = 100, status} = {}) {
+        // `excludeProjectIds` nasconde i job dei progetti archiviati.
+        findAll({limit = 100, status, excludeProjectIds = []} = {}) {
             const filter = {archived: {$ne: true}}
             if (status) filter.status = status
+            if (excludeProjectIds.length) filter.project_id = {$nin: excludeProjectIds}
             return collection
                 .find(filter, {projection: {executions: 0}})
                 .sort({created_at: -1})

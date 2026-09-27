@@ -67,7 +67,9 @@ export function projectsService(db) {
             return {project_id: result.insertedId.toString()}
         },
 
-        findAll: () => model.findAll(),
+        findAll: ({include_archived} = {}) => model.findAll({
+            includeArchived: include_archived === true || include_archived === 'true'
+        }),
 
         findById: (id) => model.findById(id),
 
@@ -97,6 +99,10 @@ export function projectsService(db) {
             }
             if (fields.gitlab_direct_branch !== undefined) {
                 allowed['gitlab.direct_branch'] = fields.gitlab_direct_branch === true
+            }
+            if (fields.archived !== undefined) {
+                allowed.archived = fields.archived === true
+                allowed.archived_at = allowed.archived ? new Date() : null
             }
             await model.updateById(id, allowed)
             return model.findById(id)

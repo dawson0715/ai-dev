@@ -43,6 +43,12 @@ export function jobsService(db) {
         return Math.round((minutes / 60) * rate * 100) / 100
     }
 
+    function conflict(message) {
+        const err = new Error(message)
+        err.statusCode = 409
+        return err
+    }
+
     function notFound(message) {
         const err = new Error(message)
         err.statusCode = 404
@@ -94,7 +100,12 @@ export function jobsService(db) {
     return {
         init: () => jobs.init(),
 
-        findAll: (opts) => jobs.findAll(opts),
+        // I job dei progetti archiviati non compaiono nella lista globale
+        // (restano visibili dal dettaglio progetto).
+        async findAll(opts = {}) {
+            const excludeProjectIds = await projects.findArchivedIds()
+            return jobs.findAll({...opts, excludeProjectIds})
+        },
 
         findByProject: (projectId) => jobs.findByProject(projectId),
 
@@ -160,6 +171,7 @@ export function jobsService(db) {
         async syncProject(projectId) {
             const project = await projects.findById(projectId)
             if (!project) throw notFound('project not found')
+            if (project.archived) throw conflict('project is archived')
 
             const source = project.task_source ?? (project.clickup?.list_id ? 'clickup' : 'manual')
 
@@ -204,8 +216,12 @@ export function jobsService(db) {
                 await jobs.recoverStaleRunning(new Date(now - RUNNING_JOB_STALE_MS))
             }
 
-            const activeProjectIds = await jobs.findActiveProjectIds()
-            const candidates = await jobs.findClaimCandidates(100, activeProjectIds)
+            // Esclude i progetti con lo slot occupato e quelli archiviati.
+            const [activeProjectIds, archivedProjectIds] = await Promise.all([
+                jobs.findActiveProjectIds(),
+                projects.findArchivedIds()
+            ])
+            const candidates = await jobs.findClaimCandidates(100, [...activeProjectIds, ...archivedProjectIds])
 
             for (const candidate of candidates) {
                 const dependencyIds = candidate.depends_on_job_ids ?? []

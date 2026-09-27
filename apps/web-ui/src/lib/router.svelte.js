@@ -20,6 +20,19 @@ class Router {
     navigate(path) {
         window.location.hash = path
     }
+
+    // Aggiorna i query param della route corrente senza aggiungere una voce
+    // alla history (replaceState non emette hashchange: aggiorniamo a mano).
+    setParams(params) {
+        const qs = new URLSearchParams()
+        for (const [k, v] of Object.entries(params)) {
+            if (v !== undefined && v !== null && v !== '') qs.set(k, v)
+        }
+        const query = qs.toString()
+        const hash = `#${this.current.path}${query ? `?${query}` : ''}`
+        history.replaceState(history.state, '', hash)
+        this.current = parse(hash)
+    }
 }
 
 export const router = new Router()
