@@ -2,6 +2,7 @@ import {ObjectId} from 'mongodb'
 import {chatsModel} from '../models/chats.model.js'
 import {projectsModel} from '../models/projects.model.js'
 import {jobsModel} from '../models/jobs.model.js'
+import {mergeRequestsModel} from '../models/mergeRequests.model.js'
 import {sanitizeActivity} from '../activity.js'
 
 // Oltre questa soglia una chat 'running' è considerata orfana e torna
@@ -72,10 +73,24 @@ function normalizeDraft(draft) {
     }
 }
 
+// Verdetto dalla riga finale della review ("VERDETTO: ok|issues|blocking").
+export function parseVerdict(text) {
+    const match = String(text ?? '').match(/VERDETTO:\W*(ok|issues|blocking)\b/i)
+    return match ? match[1].toLowerCase() : 'unknown'
+}
+
+// La risposta chiude una review automatica se la domanda in attesa è una
+// richiesta di review (non una domanda dell'utente né una bozza job).
+function pendingReviewRequest(chat) {
+    const last = chat?.messages?.[chat.messages.length - 1]
+    return chat?.merge_request_id && chat.mode !== 'draft_job' && last?.role === 'user' && last.kind === 'mr_review'
+}
+
 export function chatsService(db) {
     const model = chatsModel(db)
     const projects = projectsModel(db)
     const jobs = jobsModel(db)
+    const mergeRequests = mergeRequestsModel(db)
 
     return {
         init: () => model.init(),
@@ -158,12 +173,25 @@ export function chatsService(db) {
             }
             if (Array.isArray(activity) && activity.length) message.activity = sanitizeActivity(activity)
             if (error) message.error = String(error)
+            const validSha = typeof sha === 'string' && /^[0-9a-f]{7,64}$/.test(sha) ? sha : null
+            const chat = await model.findById(id)
             const res = await model.pushReply(id, message, {
                 error: error ? String(error) : null,
                 sessionId: typeof session_id === 'string' ? session_id.slice(0, 100) : null,
-                sha: typeof sha === 'string' && /^[0-9a-f]{7,64}$/.test(sha) ? sha : null
+                sha: validSha
             })
             if (res.matchedCount === 0) throw httpError(409, 'chat is not running')
+
+            // Anche una review fallita registra lo sha: senza, il sync la
+            // riaccoderebbe a ogni giro. Si rifà a mano con "Rivedi".
+            if (pendingReviewRequest(chat)) {
+                await mergeRequests.setReview(chat.merge_request_id, {
+                    sha: validSha ?? chat.merge_request.sha,
+                    verdict: error ? 'failed' : parseVerdict(message.text),
+                    reviewed_at: message.created_at,
+                    cost_usd: message.cost_usd
+                })
+            }
             return {ok: true}
         },
 

@@ -13,6 +13,7 @@
     import Select from '../components/Select.svelte'
     import NewJobModal from '../components/NewJobModal.svelte'
     import ChatDrawer from '../components/ChatDrawer.svelte'
+    import ReviewBadge from '../components/ReviewBadge.svelte'
     import {serviceLabel} from '../lib/serviceName.js'
     import {TASK_SOURCES} from '../lib/taskSource.js'
 
@@ -39,6 +40,9 @@
     })
     let saving = $state(false)
     let archiving = $state(false)
+    let mergeRequests = $state([])
+    let syncingMrs = $state(false)
+    let startingReview = $state('')
 
     // Pannello chat e conversazione aperta vivono nei query param: link condivisibili.
     const chatOpen = $derived(router.current.params.ask === '1')
@@ -85,6 +89,42 @@
             toast.error(`Errore: ${e.message}`)
         } finally {
             loading = false
+        }
+    }
+
+    // MR esterne: caricate a parte, un errore GitLab non blocca la pagina.
+    async function loadMergeRequests() {
+        try {
+            mergeRequests = await api.mergeRequests.list(projectId)
+        } catch (e) {
+            toast.error(`Errore caricamento merge request: ${e.message}`)
+        }
+    }
+
+    async function syncMergeRequests() {
+        syncingMrs = true
+        try {
+            const r = await api.mergeRequests.sync(projectId)
+            toast.success(r.reviews_queued ? `${r.reviews_queued} review accodate` : 'Merge request aggiornate')
+            await loadMergeRequests()
+        } catch (e) {
+            toast.error(`Aggiornamento MR fallito: ${e.message}`)
+        } finally {
+            syncingMrs = false
+        }
+    }
+
+    async function openMergeRequest(mr) {
+        if (mr.chat_id) return router.setParams({ask: '1', chat: mr.chat_id})
+        startingReview = mr._id
+        try {
+            const updated = await api.mergeRequests.review(mr._id)
+            await loadMergeRequests()
+            router.setParams({ask: '1', chat: updated.chat_id})
+        } catch (e) {
+            toast.error(`Review non avviata: ${e.message}`)
+        } finally {
+            startingReview = ''
         }
     }
 
@@ -143,6 +183,13 @@
     $effect(() => {
         projectId
         load()
+    })
+
+    // Ricaricate anche all'apertura/chiusura della chat: stato review aggiornato.
+    $effect(() => {
+        projectId
+        chatOpen
+        loadMergeRequests()
     })
 
     const counts = $derived.by(() => {
@@ -208,6 +255,48 @@
             </Card>
         {/each}
     </div>
+
+    {#if project.gitlab?.url}
+        <Card padding="none" class="mb-6">
+            <div class="px-4 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-semibold text-slate-100">Merge request</h2>
+                    <p class="text-xs text-slate-500">MR aperte da altri sviluppatori: review automatica, domande e merge dalla chat.</p>
+                </div>
+                <Button size="sm" variant="ghost" onclick={syncMergeRequests} loading={syncingMrs} disabled={syncingMrs}>Aggiorna</Button>
+            </div>
+            {#if mergeRequests.length === 0}
+                <p class="px-4 sm:px-6 py-4 text-sm text-slate-500">Nessuna merge request aperta.</p>
+            {:else}
+                <ul class="divide-y divide-slate-800">
+                    {#each mergeRequests as mr (mr._id)}
+                        <li>
+                            <button onclick={() => openMergeRequest(mr)} disabled={startingReview === mr._id}
+                                    class="w-full text-left px-4 sm:px-6 py-3 hover:bg-slate-800/40 transition flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-medium text-slate-100 truncate">
+                                        <span class="font-mono text-slate-400">!{mr.iid}</span> {mr.title}
+                                    </div>
+                                    <div class="text-xs text-slate-500 truncate mt-0.5">
+                                        {mr.author} · {mr.source_branch} → {mr.target_branch}
+                                        {#if mr.has_conflicts}<span class="text-rose-300"> · conflitti</span>{/if}
+                                        {#if mr.review?.sha && mr.review.sha !== mr.sha && mr.chat_status !== 'pending' && mr.chat_status !== 'running'}
+                                            <span class="text-amber-300"> · nuovi commit</span>
+                                        {/if}
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 shrink-0">
+                                    {#if startingReview === mr._id}<Spinner size={14}/>{/if}
+                                    <ReviewBadge {mr}/>
+                                    <span class="text-xs text-slate-400">{mr.chat_id ? 'Apri chat' : 'Avvia review'}</span>
+                                </div>
+                            </button>
+                        </li>
+                    {/each}
+                </ul>
+            {/if}
+        </Card>
+    {/if}
 
     <Card padding="none">
         <div class="px-4 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between">

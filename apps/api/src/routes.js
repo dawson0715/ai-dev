@@ -6,12 +6,14 @@ import {sprintsController} from './controllers/sprints.controller.js'
 import {supportController} from './controllers/support.controller.js'
 import {gitlabController} from './controllers/gitlab.controller.js'
 import {chatsController} from './controllers/chats.controller.js'
+import {mergeRequestsController} from './controllers/mergeRequests.controller.js'
 import {projectsService} from './services/projects.service.js'
 import {jobsService} from './services/jobs.service.js'
 import {clientsService} from './services/clients.service.js'
 import {sprintsService} from './services/sprints.service.js'
 import {supportService} from './services/support.service.js'
 import {chatsService} from './services/chats.service.js'
+import {mergeRequestsService} from './services/mergeRequests.service.js'
 
 export async function registerRoutes(app, db) {
     const jobs = jobsService(db)
@@ -20,12 +22,14 @@ export async function registerRoutes(app, db) {
     const sprints = sprintsService(db)
     const support = supportService(db)
     const chats = chatsService(db)
+    const mergeRequests = mergeRequestsService(db)
 
     await projects.init()
     await jobs.init()
     await clients.init()
     await sprints.init()
     await chats.init()
+    await mergeRequests.init()
 
     const health = healthController()
     const projectsCtl = projectsController({projectsService: projects, jobsService: jobs})
@@ -35,6 +39,7 @@ export async function registerRoutes(app, db) {
     const supportCtl = supportController({supportService: support})
     const gitlabCtl = gitlabController()
     const chatsCtl = chatsController({chatsService: chats})
+    const mergeRequestsCtl = mergeRequestsController({mergeRequestsService: mergeRequests})
 
     app.get('/health', health.get)
 
@@ -58,6 +63,15 @@ export async function registerRoutes(app, db) {
     app.post('/chats/:id/draft-job', chatsCtl.draftJob)
     app.post('/chats/:id/progress', chatsCtl.progress)
     app.post('/chats/:id/reply', chatsCtl.reply)
+
+    // MR esterne del repo GitLab: il worker chiama il sync periodicamente, che
+    // accoda la review automatica nella chat della MR. Merge/close da UI.
+    app.get('/projects/:id/merge-requests', mergeRequestsCtl.listByProject)
+    app.post('/projects/:id/merge-requests/sync', mergeRequestsCtl.sync)
+    app.get('/merge-requests/:id', mergeRequestsCtl.get)
+    app.post('/merge-requests/:id/review', mergeRequestsCtl.review)
+    app.post('/merge-requests/:id/merge', mergeRequestsCtl.merge)
+    app.post('/merge-requests/:id/close', mergeRequestsCtl.close)
 
     app.get('/gitlab/service-accounts', gitlabCtl.listServiceAccounts)
 

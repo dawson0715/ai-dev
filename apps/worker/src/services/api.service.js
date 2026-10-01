@@ -34,6 +34,7 @@ export function apiClient() {
         failJob: (jobId, payload) => request('POST', `/jobs/${jobId}/fail`, payload),
         claimChat: () => request('POST', '/chats/claim'),
         replyChat: (chatId, payload) => request('POST', `/chats/${chatId}/reply`, payload),
-        chatProgress: (chatId, entries) => request('POST', `/chats/${chatId}/progress`, {entries})
+        chatProgress: (chatId, entries) => request('POST', `/chats/${chatId}/progress`, {entries}),
+        syncMergeRequests: (projectId) => request('POST', `/projects/${projectId}/merge-requests/sync`)
     }
 }

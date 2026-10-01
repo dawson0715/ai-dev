@@ -69,6 +69,17 @@ export const api = {
         remove: (id) => request(`/chats/${id}`, {method: 'DELETE'})
     },
 
+    // MR esterne del repo GitLab del progetto, con review automatica nella
+    // chat della MR. Merge e chiusura passano da GitLab.
+    mergeRequests: {
+        list: (projectId) => request(`/projects/${projectId}/merge-requests`),
+        sync: (projectId) => request(`/projects/${projectId}/merge-requests/sync`, {method: 'POST'}),
+        get: (id) => request(`/merge-requests/${id}`),
+        review: (id) => request(`/merge-requests/${id}/review`, {method: 'POST'}),
+        merge: (id) => request(`/merge-requests/${id}/merge`, {method: 'POST'}),
+        close: (id) => request(`/merge-requests/${id}/close`, {method: 'POST'})
+    },
+
     clients: {
         list: () => request('/clients'),
         get: (id) => request(`/clients/${id}`),

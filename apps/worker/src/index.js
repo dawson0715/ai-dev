@@ -1,7 +1,7 @@
 import path from 'path'
 import fs from 'fs/promises'
 import {apiClient} from './services/api.service.js'
-import {alignCheckout, commitAll, createWorktree, ensureClone, fetchOrigin, prepareReadWorktree, pruneWorktrees, pushBranch, removeWorktree, resolveRef, sweepIdleWorktrees} from './services/git.service.js'
+import {alignCheckout, commitAll, createWorktree, ensureClone, fetchMergeRequestRef, fetchOrigin, prepareReadWorktree, pruneWorktrees, pushBranch, removeWorktree, resolveRef, sweepIdleWorktrees} from './services/git.service.js'
 import {buildPrompt, parseEstimatedMinutes, runClaude} from './services/agent.service.js'
 import {ensureMergeRequest, getMergeRequest, mergeMergeRequest} from './services/gitlab.service.js'
 import {pollProjectJobs} from './services/project-sync.service.js'
@@ -9,6 +9,8 @@ import {buildChatPrompt, buildJobDraftPrompt, CHAT_PERMISSION_ARGS, chatClaudeAr
 import {createActivityRecorder} from './services/activity.service.js'
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 30000)
+// Sync delle MR esterne (e accodamento delle review automatiche).
+const MR_POLL_INTERVAL_MS = Number(process.env.MR_POLL_INTERVAL_MS ?? 10 * 60 * 1000)
 const WORKER_CONCURRENCY = Math.max(1, Number.parseInt(process.env.WORKER_CONCURRENCY ?? '4', 10) || 1)
 const JOB_HEARTBEAT_MS = Math.max(5000, Number.parseInt(process.env.JOB_HEARTBEAT_MS ?? '30000', 10) || 30000)
 const WORKSPACE = process.env.WORKSPACE ?? ''
@@ -296,12 +298,29 @@ async function processNextJob(executorId) {
     return true
 }
 
+let lastMergeRequestSyncAt = 0
+
+async function syncMergeRequests(projects) {
+    if (Date.now() - lastMergeRequestSyncAt < MR_POLL_INTERVAL_MS) return
+    lastMergeRequestSyncAt = Date.now()
+    for (const project of projects) {
+        if (!project.gitlab?.url) continue
+        try {
+            const {reviews_queued} = await api.syncMergeRequests(project._id)
+            if (reviews_queued > 0) console.log(`project ${project._id}: ${reviews_queued} review di MR accodate`)
+        } catch (err) {
+            console.error(`merge request sync failed for project ${project._id}:`, err.message)
+        }
+    }
+}
+
 ;(async function pollerLoop() {
     while (true) {
         try {
             const projects = await api.listProjects()
             await reconcileMerges(projects)
             await pollProjectJobs(projects, api)
+            await syncMergeRequests(projects)
         } catch (err) {
             console.error('poll error:', err)
         }
@@ -385,11 +404,12 @@ async function processNextChat() {
         if (!project) throw new Error('project non trovato')
         const repoPath = await ensureClone(project, WORKSPACE)
         await fetchForChat(project, repoPath)
+        if (chat.merge_request) await fetchMergeRequestRef(repoPath, chat.merge_request.iid)
 
-        const refs = chatRefs(project, job)
-        const {ref, sha} = await resolveRef(repoPath, refs)
+        const baseBranch = project.gitlab?.default_branch?.trim() || 'main'
+        const {ref, sha} = await resolveRef(repoPath, chatRefs(project, job, chat.merge_request))
         let cwd = repoPath
-        if (ref === refs[refs.length - 1]) {
+        if (ref === `origin/${baseBranch}`) {
             // Branch di default: checkout condiviso del clone in cache.
             release = await acquireCacheCheckout(project, repoPath, sha)
         } else {

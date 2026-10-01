@@ -13,7 +13,8 @@ export function chatsModel(db) {
         },
 
         findByProject(projectId, {jobId} = {}) {
-            const filter = {project_id: projectId}
+            // Le chat di review delle MR si aprono dalla loro MR, non dalla lista.
+            const filter = {project_id: projectId, merge_request_id: {$exists: false}}
             if (jobId) filter.job_id = jobId
             return collection
                 .find(filter, {projection: {messages: 0, progress: 0}})
@@ -25,14 +26,19 @@ export function chatsModel(db) {
             return collection.findOne({_id: id})
         },
 
+        findStatuses(ids) {
+            return collection.find({_id: {$in: ids}}, {projection: {status: 1}}).toArray()
+        },
+
         // Accoda un messaggio utente solo se la chat non sta già aspettando una
-        // risposta: una domanda alla volta per conversazione.
-        pushUserMessage(id, message) {
+        // risposta: una domanda alla volta per conversazione. `fields`: campi
+        // aggiornati insieme al messaggio (es. snapshot della MR).
+        pushUserMessage(id, message, fields = {}) {
             return collection.findOneAndUpdate(
                 {_id: id, status: {$nin: BUSY_STATUSES}},
                 {
                     $push: {messages: message},
-                    $set: {status: 'pending', updated_at: message.created_at},
+                    $set: {...fields, status: 'pending', updated_at: message.created_at},
                     $unset: {error: '', mode: ''}
                 },
                 {returnDocument: 'after'}

@@ -1,3 +1,5 @@
+import {mergeRequestRef} from './git.service.js'
+
 const HISTORY_MESSAGES = 20
 const HISTORY_MESSAGE_CHARS = 4000
 
@@ -55,7 +57,9 @@ function truncate(text, max) {
 // Ref da cui creare il worktree della chat, in ordine di preferenza: per una
 // chat su un job il suo branch (per vedere le modifiche dell'agente), poi il
 // branch di default. Il branch del job può non esistere più dopo il merge.
-export function chatRefs(project, job) {
+// Una chat di review legge solo l'head della MR: senza, non c'è nulla da rivedere.
+export function chatRefs(project, job, mergeRequest = null) {
+    if (mergeRequest) return [mergeRequestRef(mergeRequest.iid)]
     const baseBranch = project?.gitlab?.default_branch?.trim() || 'main'
     const refs = []
     if (job?.gitlab?.branch && job.gitlab.branch !== baseBranch) refs.push(`origin/${job.gitlab.branch}`)
@@ -86,6 +90,41 @@ function jobSection(job, {ref, baseBranch}) {
         ? `La directory corrente è il branch del job: le modifiche dell'agente si vedono con \`git diff origin/${baseBranch}...HEAD\`.`
         : `Il branch del job non è disponibile (probabilmente già unito): la directory corrente è ${baseBranch}.`)
     return lines
+}
+
+function mergeRequestSection(mr) {
+    if (!mr) return []
+    return [
+        ``,
+        `# Merge request in revisione`,
+        `La conversazione riguarda questa merge request GitLab, proposta da uno sviluppatore (non dall'agente).`,
+        `Titolo: !${mr.iid} ${mr.title}`,
+        `Autore: ${mr.author || '(sconosciuto)'}`,
+        `Branch: ${mr.source_branch} → ${mr.target_branch}`,
+        `URL: ${mr.web_url}`,
+        ``,
+        `## Descrizione`,
+        truncate(mr.description || '(nessuna descrizione)', HISTORY_MESSAGE_CHARS),
+        ``,
+        `La directory corrente è il codice della merge request: le modifiche proposte si vedono con`,
+        `\`git diff origin/${mr.target_branch}...HEAD\` e i commit con \`git log origin/${mr.target_branch}..HEAD\`.`
+    ]
+}
+
+// Istruzioni aggiunte a ogni richiesta di review (prima e incrementali).
+const REVIEW_INSTRUCTIONS = [
+    ``,
+    `# Formato della review`,
+    `Valuta correttezza, sicurezza, regressioni, test mancanti e coerenza con le convenzioni`,
+    `del repository (AGENTS.md se presente). Leggi il codice attorno alle modifiche, non solo il diff.`,
+    `Struttura la risposta con le sezioni **Sintesi**, **Problemi bloccanti**, **Rischi e regressioni**,`,
+    `**Suggerimenti**; cita i punti come \`percorso/file:riga\` e scrivi "Nessuno" se una sezione è vuota.`,
+    `Chiudi con una riga esatta tra: \`VERDETTO: ok\` (mergiabile), \`VERDETTO: issues\` (mergiabile dopo`,
+    `correzioni minori), \`VERDETTO: blocking\` (da non mergiare).`
+]
+
+function isReviewRequest(message) {
+    return message?.role === 'user' && message.kind === 'mr_review'
 }
 
 function historySection(messages) {
@@ -126,17 +165,21 @@ export function buildChatPrompt(chat, project, job = null, {ref, resumed = false
     const messages = chat.messages ?? []
     const question = messages[messages.length - 1]
 
+    const review = isReviewRequest(question) ? REVIEW_INSTRUCTIONS : []
+
     if (resumed) {
-        return [...(codeChangedTo ? codeChangedNote(ref, codeChangedTo) : []), question?.text ?? ''].join('\n')
+        return [...(codeChangedTo ? codeChangedNote(ref, codeChangedTo) : []), question?.text ?? '', ...review].join('\n')
     }
 
     return [
         ...header(project, ref),
         ...jobSection(job, {ref, baseBranch}),
+        ...mergeRequestSection(chat.merge_request),
         ...historySection(messages.slice(0, -1)),
         ``,
         `# Domanda`,
-        question?.text ?? ''
+        question?.text ?? '',
+        ...review
     ].join('\n')
 }
 
@@ -166,6 +209,7 @@ export function buildJobDraftPrompt(chat, project, job = null, {ref, resumed = f
         ``,
         ...JOB_DRAFT_INSTRUCTIONS,
         ...jobSection(job, {ref, baseBranch}),
+        ...mergeRequestSection(chat.merge_request),
         ...historySection(chat.messages ?? [])
     ].join('\n')
 }

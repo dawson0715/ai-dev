@@ -8,6 +8,7 @@
     import ActivityFeed from './ActivityFeed.svelte'
     import Markdown from './Markdown.svelte'
     import NewJobModal from './NewJobModal.svelte'
+    import MergeRequestBar from './MergeRequestBar.svelte'
 
     // Chat di sola lettura sul codice del progetto. Con `jobId` la
     // conversazione è legata al job: il worker risponde sul branch del job e
@@ -154,6 +155,10 @@
                 {/if}
             {/if}
         </div>
+        {#if chat?.merge_request_id}
+            <MergeRequestBar mergeRequestId={chat.merge_request_id} chatStatus={chat.status}
+                             onchange={() => loadChat(chat._id)}/>
+        {/if}
     {/if}
 
     <div bind:this={scroller} class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
@@ -210,6 +215,9 @@
                                 <Button size="sm" class="mt-3" onclick={() => draftForJob = m.job_draft}>Rivedi e crea job</Button>
                             {:else if m.role === 'assistant'}
                                 <Markdown text={m.text}/>
+                            {:else if m.kind === 'mr_review'}
+                                <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">Review automatica</div>
+                                <div class="whitespace-pre-wrap break-words text-xs text-slate-300">{m.text}</div>
                             {:else}
                                 <div class="whitespace-pre-wrap break-words">{m.text}</div>
                             {/if}

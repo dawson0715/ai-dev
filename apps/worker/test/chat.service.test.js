@@ -93,3 +93,25 @@ test('recognizes missing sessions and budget errors from the CLI result', () => 
     assert.equal(isBudgetExceeded({result: {subtype: 'error_max_budget_usd'}}), true)
     assert.equal(isBudgetExceeded({result: {subtype: 'success'}}), false)
 })
+
+test('review chat reads only the MR head and asks for a structured verdict', () => {
+    const mr = {iid: 12, title: 'Fix login', author: 'mario', source_branch: 'fix/login', target_branch: 'develop', web_url: 'https://gitlab/mr/12', description: 'Corregge il redirect'}
+    assert.deepEqual(chatRefs(project, null, mr), ['refs/merge-requests/12/head'])
+
+    const chat = {merge_request: mr, messages: [{role: 'user', kind: 'mr_review', text: 'Fai la code review completa della merge request !12.'}]}
+    const prompt = buildChatPrompt(chat, project, null, {ref: 'refs/merge-requests/12/head'})
+    assert.match(prompt, /Titolo: !12 Fix login/)
+    assert.match(prompt, /git diff origin\/develop\.\.\.HEAD/)
+    assert.match(prompt, /VERDETTO: blocking/)
+
+    // Delta dopo un push: sessione ripresa, istruzioni di review ripetute.
+    const delta = buildChatPrompt({...chat, messages: [...chat.messages, {role: 'assistant', text: 'ok'}, {role: 'user', kind: 'mr_review', text: 'Rivedi il delta'}]},
+        project, null, {ref: 'refs/merge-requests/12/head', resumed: true, codeChangedTo: 'abc'})
+    assert.match(delta, /Rivedi il delta/)
+    assert.match(delta, /VERDETTO: ok/)
+
+    // Una domanda dell'utente nella stessa chat non chiede il formato review.
+    const question = buildChatPrompt({...chat, messages: [...chat.messages, {role: 'assistant', text: 'ok'}, {role: 'user', text: 'Perché?'}]},
+        project, null, {resumed: true})
+    assert.doesNotMatch(question, /VERDETTO/)
+})

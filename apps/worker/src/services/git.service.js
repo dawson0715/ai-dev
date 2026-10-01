@@ -202,6 +202,22 @@ export async function fetchOrigin(repoPath) {
     }
 }
 
+// Head di una MR in un ref locale fuori da refs/remotes, così il fetch con
+// --prune non lo cancella. Funziona anche per le MR da fork. Tollerante come
+// fetchOrigin: se fallisce si usa l'ultimo head noto.
+export function mergeRequestRef(iid) {
+    return `refs/merge-requests/${iid}/head`
+}
+
+export async function fetchMergeRequestRef(repoPath, iid) {
+    const ref = mergeRequestRef(iid)
+    try {
+        await simpleGit(repoPath).fetch('origin', [`+${ref}:${ref}`])
+    } catch (err) {
+        console.error(`fetch MR !${iid} failed for ${repoPath}, uso lo stato locale:`, err.message)
+    }
+}
+
 // mtime della directory = ultimo utilizzo, usato dallo sweep dei worktree inattivi.
 async function touch(p) {
     const now = new Date()
