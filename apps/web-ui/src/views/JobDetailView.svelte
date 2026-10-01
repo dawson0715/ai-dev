@@ -19,9 +19,6 @@
     let loading = $state(true)
     let actionLoading = $state(false)
     let confirmFail = $state(false)
-    let estimateInput = $state('')
-    let savingEstimate = $state(false)
-    let recalculating = $state(false)
     let commentText = $state('')
     let savingComment = $state(false)
     let editingText = $state(false)
@@ -38,7 +35,6 @@
         loading = true
         try {
             job = await api.jobs.get(jobId)
-            estimateInput = job?.estimate != null ? String(job.estimate) : ''
             editTitle = job?.title ?? job?.clickup?.title ?? ''
             editDescription = job?.description ?? job?.clickup?.description ?? ''
             editingText = false
@@ -47,32 +43,6 @@
             toast.error(`Errore: ${e.message}`)
         } finally {
             loading = false
-        }
-    }
-
-    async function saveEstimate() {
-        savingEstimate = true
-        try {
-            await api.jobs.update(jobId, {estimate: estimateInput})
-            toast.success('Stima aggiornata')
-            await load()
-        } catch (e) {
-            toast.error(`Salvataggio stima fallito: ${e.message}`)
-        } finally {
-            savingEstimate = false
-        }
-    }
-
-    async function recalculateEstimate() {
-        recalculating = true
-        try {
-            const r = await api.jobs.recalculateEstimate(jobId)
-            toast.success(`Stima ricalcolata: ${formatCurrency(r.estimate)}`)
-            await load()
-        } catch (e) {
-            toast.error(`Ricalcolo fallito: ${e.message}`)
-        } finally {
-            recalculating = false
         }
     }
 
@@ -381,31 +351,6 @@
             Job completato senza stima. Impostane una prima che entri in uno sprint.
         </div>
     {/if}
-
-    <Card class="mb-6">
-        <h2 class="font-semibold text-slate-100 mb-1">Stima costo</h2>
-        <p class="text-xs text-slate-500 mb-3">Forfait stimato del task (€). Sommato nel forfait dello sprint che lo include.</p>
-        <div class="flex items-end gap-3 max-w-xs">
-            <div class="flex-1">
-                <Field label="Stima (€)" type="number" step="0.01" min="0" bind:value={estimateInput} placeholder="0.00"/>
-            </div>
-            <Button onclick={saveEstimate} loading={savingEstimate}
-                    disabled={savingEstimate || estimateInput === (job.estimate != null ? String(job.estimate) : '')}>
-                Salva
-            </Button>
-        </div>
-        {#if job.minutes}
-            <div class="flex items-center justify-between gap-3 mt-2">
-                <p class="text-xs text-slate-500">
-                    Pre-compilata dall'agente: ~{job.minutes} min di lavoro umano equivalente{job.estimate ? `, alla tariffa oraria del cliente` : ''}.
-                </p>
-                <Button size="sm" variant="ghost" onclick={recalculateEstimate} loading={recalculating}>
-                    Ricalcola
-                </Button>
-            </div>
-            <p class="text-xs text-slate-600 mt-1">Utile se hai cambiato la tariffa oraria del cliente dopo il completamento.</p>
-        {/if}
-    </Card>
 
     {#if job.gitlab}
         <Card class="mb-6">
