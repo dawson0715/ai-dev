@@ -4,7 +4,7 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import simpleGit from 'simple-git'
-import {alignCheckout, createWorktree, fetchOrigin, prepareReadWorktree, resolveRef, sweepIdleWorktrees} from '../src/services/git.service.js'
+import {alignCheckout, createWorktree, ensureClone, fetchMergeRequestRef, fetchOrigin, mergeRequestRef, prepareReadWorktree, resolveRef, sweepIdleWorktrees} from '../src/services/git.service.js'
 
 const identity = {config: ['user.name=Test', 'user.email=test@example.com']}
 
@@ -107,6 +107,44 @@ test('sweep removes only idle, non-busy chat worktrees', async () => {
         const list = await simpleGit(repo).raw(['worktree', 'list'])
         assert.doesNotMatch(list, /chat-idle/)
     } finally {
+        await fs.rm(root, {recursive: true, force: true})
+    }
+})
+
+test('fetchMergeRequestRef fetches the MR head into a local ref', async () => {
+    const {root, origin, originGit, repo} = await setup()
+    try {
+        await commitFile(originGit, origin, 'a.txt', 'mr')
+        const mrSha = (await originGit.revparse(['HEAD'])).trim()
+        await originGit.raw(['update-ref', mergeRequestRef(141), mrSha])
+
+        await fetchMergeRequestRef(repo, 141)
+        const {sha} = await resolveRef(repo, [mergeRequestRef(141)])
+        assert.equal(sha, mrSha)
+    } finally {
+        await fs.rm(root, {recursive: true, force: true})
+    }
+})
+
+test('ensureClone refreshes rotated credentials in the origin URL', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'creds-'))
+    const prev = process.env.GITLAB_SERVICE_ACCOUNTS
+    process.env.GITLAB_SERVICE_ACCOUNTS = JSON.stringify({grp: 'bot:new-secret'})
+    try {
+        const project = {_id: 'p1', gitlab: {url: 'https://gitlab.example.com/grp/repo.git', service_account: 'grp'}}
+        const repo = path.join(root, 'cache', 'p1')
+        await fs.mkdir(repo, {recursive: true})
+        const git = simpleGit(repo, identity)
+        await git.init()
+        await commitFile(git, repo, 'a.txt', 'v1')
+        await git.raw(['remote', 'add', 'origin', 'https://bot:old-secret@gitlab.example.com/grp/repo.git'])
+
+        await ensureClone(project, root)
+        const url = (await git.raw(['remote', 'get-url', 'origin'])).trim()
+        assert.equal(url, 'https://bot:new-secret@gitlab.example.com/grp/repo.git')
+    } finally {
+        if (prev === undefined) delete process.env.GITLAB_SERVICE_ACCOUNTS
+        else process.env.GITLAB_SERVICE_ACCOUNTS = prev
         await fs.rm(root, {recursive: true, force: true})
     }
 })

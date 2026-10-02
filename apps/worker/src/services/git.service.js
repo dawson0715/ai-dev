@@ -91,6 +91,7 @@ export async function ensureClone(project, workspace) {
     if (await isGitRepo(repoPath)) {
         const origin = await currentOriginUrl(repoPath)
         if (origin && normalizeRepoUrl(origin) === normalizeRepoUrl(project.gitlab.url)) {
+            await refreshOriginCredentials(repoPath, origin, project)
             await detachHead(repoPath)
             return repoPath
         }
@@ -109,6 +110,20 @@ export async function ensureClone(project, workspace) {
     await detachHead(repoPath)
 
     return repoPath
+}
+
+// Le credenziali sono scritte nell'URL del remote al momento del clone: dopo
+// una rotazione della password in GITLAB_SERVICE_ACCOUNTS fetch e push
+// fallirebbero con "Authentication failed" finché la cache non viene rifatta.
+// Senza service account risolvibile si lascia il remote com'è.
+async function refreshOriginCredentials(repoPath, origin, project) {
+    let authedUrl
+    try {
+        authedUrl = injectCredentials(project.gitlab.url, credentialsForServiceAccount(project.gitlab.service_account))
+    } catch {
+        return
+    }
+    if (authedUrl !== origin) await simpleGit(repoPath).raw(['remote', 'set-url', 'origin', authedUrl])
 }
 
 // Il checkout principale del clone in cache resta in detached HEAD: un branch
@@ -212,7 +227,9 @@ export function mergeRequestRef(iid) {
 export async function fetchMergeRequestRef(repoPath, iid) {
     const ref = mergeRequestRef(iid)
     try {
-        await simpleGit(repoPath).fetch('origin', [`+${ref}:${ref}`])
+        // raw: con fetch('origin', [refspec]) simple-git mette l'array prima del
+        // remote e git interpreta il refspec come nome del repository.
+        await simpleGit(repoPath).raw(['fetch', 'origin', `+${ref}:${ref}`])
     } catch (err) {
         console.error(`fetch MR !${iid} failed for ${repoPath}, uso lo stato locale:`, err.message)
     }
